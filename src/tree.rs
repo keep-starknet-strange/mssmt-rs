@@ -8,12 +8,13 @@ pub struct MSSMT<KVStore: Db, const HASH_SIZE: usize> {
 
 pub trait Db {
     fn get_root_node(&self) -> Branch;
-    fn get(&self, key: &HashValue) -> Option<Node>;
-    fn insert(&self, key: HashValue, leaf: Leaf);
-    fn update_root(&self, root: Branch);
-    fn delete_branch(&self, key: HashValue);
-    fn delete_leaf(&self, key: HashValue);
-    fn insert_branch(&self, branch: Branch);
+    fn get_branch(&self, key: &HashValue) -> Option<Branch>;
+    fn get_leaf(&self, key: &HashValue) -> Option<Leaf>;
+    fn insert(&mut self, key: HashValue, leaf: Leaf);
+    fn update_root(&mut self, root: Branch);
+    fn delete_branch(&mut self, key: &HashValue);
+    fn delete_leaf(&mut self, key: &HashValue);
+    fn insert_branch(&mut self, branch: Branch);
 }
 fn bit_index(index: usize, key: HashValue) -> u8 {
     // `index as usize / 8` to get the index of the interesting byte
@@ -23,7 +24,7 @@ fn bit_index(index: usize, key: HashValue) -> u8 {
 }
 
 impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
-    pub fn new(db: KVStore) -> Self {
+    pub fn new(mut db: KVStore) -> Self {
         // let empty_node_hash = EmptyLeaf.hash();
         let mut empty_tree = Vec::with_capacity(Self::max_height() + 1);
         let empty_leaf = Node::Empty(EmptyLeaf::new());
@@ -35,6 +36,10 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
             ));
         }
         empty_tree.reverse();
+        let Node::Branch(branch) = empty_tree[0].clone() else {
+            panic!("Root should be a branch")
+        };
+        db.update_root(branch);
         Self {
             db,
             empty_tree_root_hash: empty_tree[0].hash(),
@@ -43,6 +48,9 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
     }
     pub const fn max_height() -> usize {
         HASH_SIZE * 8
+    }
+    pub fn root(&self) -> Branch {
+        self.db.get_root_node()
     }
     pub fn get_leaf_from_top(&self, key: HashValue) -> Leaf {
         let mut current_branch = Node::Branch(self.db.get_root_node());
@@ -67,9 +75,12 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
             if key == self.empty_tree[height].hash() {
                 return self.empty_tree[height].clone();
             }
-            match self.db.get(&key) {
-                Some(node) => node,
-                None => panic!("Node not found"),
+            if let Some(node) = self.db.get_branch(&key) {
+                Node::Branch(node)
+            } else if let Some(leaf) = self.db.get_leaf(&key) {
+                Node::Leaf(leaf)
+            } else {
+                self.empty_tree[height].clone()
             }
         };
         let node = get_node(height, key);
@@ -79,7 +90,7 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
         if let Node::Branch(branch) = node {
             (
                 get_node(height + 1, branch.left().hash()),
-                get_node(height + 1, branch.left().hash()),
+                get_node(height + 1, branch.right().hash()),
             )
         } else {
             panic!("Should be a branch node")
@@ -90,7 +101,7 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
         &self,
         key: HashValue,
         mut for_each: impl FnMut(usize, &Node, Node, Node),
-    ) -> Leaf {
+    ) -> Node {
         let mut current = Node::Branch(self.db.get_root_node());
         for i in 0..Self::max_height() {
             let (left, right) = self.get_children(i, current.hash());
@@ -103,9 +114,9 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
             current = next;
         }
         match current {
-            Node::Leaf(leaf) => leaf,
+            Node::Leaf(leaf) => Node::Leaf(leaf),
             Node::Branch(_) => panic!("expected leaf found branch"),
-            Node::Empty(_) => panic!("Empty node"),
+            Node::Empty(empty) => Node::Empty(empty),
         }
     }
 
@@ -113,12 +124,12 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
         &self,
         key: HashValue,
         start: Leaf,
-        mut siblings: Vec<Branch>,
+        siblings: Vec<Node>,
         mut for_each: impl FnMut(usize, &Node, &Node, &Node),
     ) -> Branch {
         let mut current = Node::Leaf(start);
-        for i in (Self::max_height() - 1)..=0 {
-            let sibling = Node::Branch(siblings.pop().unwrap());
+        for i in (0..Self::max_height()).rev() {
+            let sibling = siblings[Self::max_height() - 1 - i].clone();
             let parent = if bit_index(i, key) == 0 {
                 Node::from((current.clone(), sibling.clone()))
             } else {
@@ -135,36 +146,44 @@ impl<KVStore: Db, const HASH_SIZE: usize> MSSMT<KVStore, HASH_SIZE> {
     }
 
     pub fn insert(&mut self, key: HashValue, leaf: Leaf) {
-        let mut parents = Vec::with_capacity(Self::max_height());
+        let mut prev_parents = Vec::with_capacity(Self::max_height());
         let mut siblings = Vec::with_capacity(Self::max_height());
-        self.walk_down(key, |height, _next, sibling, parent| {
-            parents[Self::max_height() - height - 1] = parent.hash();
-            siblings[Self::max_height() - height - 1] = sibling;
+
+        self.walk_down(key, |_, _next, sibling, parent| {
+            prev_parents.push(parent.hash());
+            siblings.push(sibling);
         });
+        prev_parents.reverse();
+        siblings.reverse();
+
+        // Create a vector to store operations we'll perform after walk_up
+        let mut branches_delete = Vec::new();
+        let mut branches_insertion = Vec::new();
         let root = self.walk_up(
             key,
             leaf.clone(),
-            siblings
-                .into_iter()
-                .map(|node| match node {
-                    Node::Branch(branch) => branch,
-                    _ => panic!("Expected branch found leaf"),
-                })
-                .collect(),
+            siblings,
             |height, _current, _sibling, parent| {
-                let prev_parent = parents[Self::max_height() - height - 1];
+                let prev_parent = prev_parents[Self::max_height() - height - 1];
                 if prev_parent != self.empty_tree[height].hash() {
-                    self.db.delete_branch(prev_parent);
+                    branches_delete.push(prev_parent);
                 }
                 if parent.hash() != self.empty_tree[height].hash() {
-                    match parent {
-                        Node::Branch(parent) => self.db.insert_branch(parent.clone()),
-                        Node::Leaf(_) => panic!("Should be a branch"),
-                        Node::Empty(_) => panic!("Empty node"),
+                    if let Node::Branch(parent) = parent {
+                        branches_insertion.push(parent.clone());
                     }
                 }
             },
         );
+
+        for branch in branches_insertion {
+            self.db.insert_branch(branch);
+        }
+        // Perform the database operations after walk_up
+        for key in branches_delete {
+            self.db.delete_branch(&key);
+        }
+
         self.db.insert(leaf.hash(), leaf);
         self.db.update_root(root);
     }

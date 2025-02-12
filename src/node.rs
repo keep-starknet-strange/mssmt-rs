@@ -13,6 +13,12 @@ pub enum Node {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmptyLeaf(HashValue);
+impl Default for EmptyLeaf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EmptyLeaf {
     pub fn new() -> Self {
         let mut hasher = Sha256::new();
@@ -102,7 +108,6 @@ impl Leaf {
 }
 impl Branch {
     pub fn new(left: Node, right: Node) -> Self {
-        println!("Hashing");
         let sum = left.sum() + right.sum();
         let mut hasher = Sha256::new();
         hasher.update(left.hash());
@@ -115,6 +120,10 @@ impl Branch {
             right: Arc::new(right),
             node_hash: hasher.finalize().into(),
         }
+    }
+    pub fn empty_branch() -> Self {
+        let leaf = Node::Empty(EmptyLeaf::new());
+        Self::new(leaf.clone(), leaf)
     }
     pub fn hash(&self) -> HashValue {
         self.node_hash
@@ -133,11 +142,13 @@ impl Branch {
 #[cfg(test)]
 mod test {
     use hex_literal::hex;
+
+    use crate::node::Branch;
     #[test]
     fn test_empty_leaf_node_hash() {
         assert_eq!(
             super::EmptyLeaf::new().hash(),
-            hex! {"af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"}
+            hex!("af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc")
         )
     }
     #[test]
@@ -151,7 +162,15 @@ mod test {
                 1
             )
             .hash(),
-            hex! {"be7354c2c1c189bc64c3c4092e7141d6880936f15cd08e8498a53df99de724c4"}
+            hex!("be7354c2c1c189bc64c3c4092e7141d6880936f15cd08e8498a53df99de724c4")
+        )
+    }
+
+    #[test]
+    fn test_branch_with_empty_leaves() {
+        assert_eq!(
+            Branch::empty_branch().node_hash,
+            hex!("5a61e238f07e3a8114e39670c1e5ff430913d5793028258cf8a49282efee4411")
         )
     }
 }
