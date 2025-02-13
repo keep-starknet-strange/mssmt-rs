@@ -2,7 +2,8 @@
 name = "merkle-sum-sparse-tree"
 version = "0.1.0"
 edition = "2021"
-
+[profile.release]
+debug = true
 [dependencies]
 sha2 = "0.10.8"
 
