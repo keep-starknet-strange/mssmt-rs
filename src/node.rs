@@ -14,18 +14,25 @@ impl Hasher<32> for Sha256 {
 pub type Sum = u64;
 
 /// Simple hash trait required to hash the nodes in the tree
+/// 
+/// # Type Parameters
+/// * `HASH_SIZE` - The size of the hash digest in bytes
 pub trait Hasher<const HASH_SIZE: usize> {
     fn hash(data: &[u8]) -> [u8; HASH_SIZE];
 }
 
-/// All the possible nodes in the tree.
-/// * `HASH_SIZE` - is the size of the hash digest in bytes.
-///
-/// Note: the Hasher should be cloneable in order to make the [`Node`] type cloneable
+/// All possible nodes in the tree.
+/// 
+/// # Type Parameters
+/// * `HASH_SIZE` - The size of the hash digest in bytes
+/// * `H` - The hasher implementation used for this node
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+    /// A leaf node containing a value and sum
     Leaf(Leaf<HASH_SIZE, H>),
+    /// A branch node with two children
     Branch(Branch<HASH_SIZE, H>),
+    /// An empty leaf representing unset branches
     Empty(EmptyLeaf<HASH_SIZE, H>),
 }
 

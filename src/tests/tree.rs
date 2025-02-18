@@ -1,3 +1,5 @@
+//! Tests for the Merkle Sum Sparse Merkle Tree implementation
+
 use hex_literal::hex;
 use sha2::Sha256;
 use std::collections::HashMap;
@@ -6,6 +8,8 @@ use crate::{
     node::{Branch, EmptyLeaf, Hasher, Leaf, Node},
     tree::{Db, TreeBuilder, MSSMT},
 };
+
+/// A simple in-memory database implementation for testing
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 struct TestDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     branches: HashMap<[u8; HASH_SIZE], Branch<HASH_SIZE, H>>,

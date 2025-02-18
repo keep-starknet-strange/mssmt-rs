@@ -62,6 +62,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE
 }
 
 /// Store for the tree nodes
+/// 
+/// This trait must be implemented by any storage backend used with the tree.
+/// It provides the basic operations needed to store and retrieve nodes.
 pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     fn get_root_node(&self) -> Branch<HASH_SIZE, H>;
     fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<Branch<HASH_SIZE, H>>;
