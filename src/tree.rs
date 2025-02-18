@@ -3,27 +3,35 @@ use typenum::{Prod, Sum, Unsigned, U1, U8};
 
 use crate::node::{Branch, EmptyLeaf, Hasher, Leaf, Node};
 
-// Define the array size as (HASH_SIZE * 8) + 1
+/// Define the empty tree array size as (HASH_SIZE * 8) + 1
 type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
 
+/// Merkle sum sparse merkle tree.
+/// * `KVStore` - Key value store for nodes.
+/// * `HASH_SIZE` - size of the hash digest in bytes.
+/// * `H` - Hasher that will be used to hash nodes.
 pub struct MSSMT<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     db: KVStore,
     pub empty_tree_root_hash: [u8; HASH_SIZE],
     empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
     _phantom: PhantomData<H>,
 }
+
+/// Helper struct to create an empty mssmt.
 pub struct TreeBuilder<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(PhantomData<H>);
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE, H> {
     #[allow(clippy::declare_interior_mutable_const)]
-    pub const EMPTY_TREE: LazyCell<Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>> =
+    const EMPTY_TREE: LazyCell<Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>> =
         LazyCell::new(|| Arc::new(Self::build_tree()));
 
+    /// Gets an empty mssmt.
     pub fn empty_tree() -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]> {
         #[allow(clippy::borrow_interior_mutable_const)]
         Self::EMPTY_TREE.clone()
     }
 
+    /// builds the empty tree
     fn build_tree() -> [Node<HASH_SIZE, H>; TreeSize::USIZE] {
         let max_height = HASH_SIZE * 8;
         let mut empty_tree = Vec::with_capacity(max_height + 1);
@@ -47,20 +55,22 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE
             .unwrap_or_else(|_| panic!("Incorrect array size"))
     }
 
+    /// Builds a new MSSMT object from the empty tree.
     pub fn build<KVStore: Db<HASH_SIZE, H>>(db: KVStore) -> MSSMT<KVStore, HASH_SIZE, H> {
         MSSMT::new_with_tree(db, Self::build_tree())
     }
 }
 
+/// Store for the tree nodes
 pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     fn get_root_node(&self) -> Branch<HASH_SIZE, H>;
     fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<Branch<HASH_SIZE, H>>;
     fn get_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<Leaf<HASH_SIZE, H>>;
-    fn insert(&mut self, leaf: Leaf<HASH_SIZE, H>);
+    fn insert_leaf(&mut self, leaf: Leaf<HASH_SIZE, H>);
+    fn insert_branch(&mut self, branch: Branch<HASH_SIZE, H>);
     fn update_root(&mut self, root: Branch<HASH_SIZE, H>);
     fn delete_branch(&mut self, key: &[u8; HASH_SIZE]);
     fn delete_leaf(&mut self, key: &[u8; HASH_SIZE]);
-    fn insert_branch(&mut self, branch: Branch<HASH_SIZE, H>);
 }
 
 fn bit_index(index: usize, key: &[u8]) -> u8 {
@@ -69,9 +79,11 @@ fn bit_index(index: usize, key: &[u8]) -> u8 {
     // right shift it and keep only this interesting bit with & 1.
     (key[index / 8] >> (index % 8)) & 1
 }
+
 impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
     MSSMT<KVStore, HASH_SIZE, H>
 {
+    /// Creates a new mssmt. This will build an empty tree which will involve a lot of hashing.
     pub fn new(mut db: KVStore) -> Self {
         let empty_tree = TreeBuilder::empty_tree();
         let Node::Branch(branch) = empty_tree.as_ref()[0].clone() else {
@@ -86,6 +98,8 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             _phantom: PhantomData,
         }
     }
+
+    /// Creates a new mssmt from an already built empty tree. No hashing involved.
     pub fn new_with_tree(
         mut db: KVStore,
         empty_tree: [Node<HASH_SIZE, H>; TreeSize::USIZE],
@@ -102,12 +116,17 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             _phantom: PhantomData,
         }
     }
+
+    /// Max height of the tree
     pub const fn max_height() -> usize {
         HASH_SIZE * 8
     }
+
+    /// Root node of the tree.
     pub fn root(&self) -> Branch<HASH_SIZE, H> {
         self.db.get_root_node()
     }
+
     pub fn get_leaf_from_top(&self, key: [u8; HASH_SIZE]) -> Leaf<HASH_SIZE, H> {
         let mut current_branch = Node::Branch(self.db.get_root_node());
         for i in 0..Self::max_height() {
@@ -126,6 +145,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         }
     }
 
+    /// Get the children of a node from the key.
     pub fn get_children(
         &self,
         height: usize,
@@ -156,6 +176,8 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         }
     }
 
+    /// Walk down the tree from the root node to the node.
+    /// * `for_each` - Closure that is executed at each step of the traversal of the tree.
     pub fn walk_down(
         &self,
         key: [u8; HASH_SIZE],
@@ -179,6 +201,15 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         }
     }
 
+    /// Walk up the tree from the node to the root node.
+    /// * `key` - key of the node we want to reach.
+    /// * `start` - starting leaf.
+    /// * `siblings` - All the sibling nodes on the path (from the leaf to the target node).
+    /// * `for_each` - Closure that is executed at each step of the traversal of the tree.
+    ///     * `height: usize` - current height in the tree
+    ///     * `current: &Node<HASH_SIZE, H>` - current node on the way to the asked node
+    ///     * `sibling: &Node<HASH_SIZE, H>` - sibling node of the current node on the way to the asked node
+    ///     * `parent: &Node<HASH_SIZE, H>` - parent node of the current node on the way to the asked node
     pub fn walk_up(
         &self,
         key: [u8; HASH_SIZE],
@@ -204,6 +235,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         }
     }
 
+    /// Insert a leaf in the tree.
     pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) {
         let mut prev_parents = Vec::with_capacity(Self::max_height());
         let mut siblings = Vec::with_capacity(Self::max_height());
@@ -243,7 +275,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             self.db.delete_branch(&key);
         }
 
-        self.db.insert(leaf);
+        self.db.insert_leaf(leaf);
         self.db.update_root(root);
     }
 }

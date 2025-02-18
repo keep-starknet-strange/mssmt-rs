@@ -26,7 +26,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
         self.leaves.get(key).cloned()
     }
 
-    fn insert(&mut self, leaf: crate::node::Leaf<HASH_SIZE, H>) {
+    fn insert_leaf(&mut self, leaf: crate::node::Leaf<HASH_SIZE, H>) {
         self.leaves.insert(leaf.hash(), leaf);
     }
 
@@ -106,7 +106,7 @@ fn test_insertion() {
     ) {
         let mut db = TestDb::default();
         for leaf in leaves {
-            db.insert(leaf);
+            db.insert_leaf(leaf);
         }
         for branches in check_branches.clone() {
             for branch in branches {
