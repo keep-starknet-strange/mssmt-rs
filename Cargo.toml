@@ -5,7 +5,9 @@ edition = "2021"
 [profile.release]
 debug = true
 [dependencies]
+generic-array = "1.2.0"
 sha2 = "0.10.8"
+typenum = "1.17.0"
 
 [dev-dependencies]
 hex-literal = "0.4.1"

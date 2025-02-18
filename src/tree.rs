@@ -1,29 +1,55 @@
 use std::{borrow::Borrow, cell::LazyCell, marker::PhantomData, sync::Arc};
+use typenum::{Prod, Sum, Unsigned, U1, U8};
 
 use crate::node::{Branch, EmptyLeaf, Hasher, Leaf, Node};
+
+// Define the array size as (HASH_SIZE * 8) + 1
+type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
 
 pub struct MSSMT<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     db: KVStore,
     pub empty_tree_root_hash: [u8; HASH_SIZE],
+    empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
     _phantom: PhantomData<H>,
 }
-pub fn build_empty_tree<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(
-) -> Vec<Node<HASH_SIZE, H>> {
-    let max_height = HASH_SIZE * 8;
-    let mut empty_tree = Vec::with_capacity(max_height + 1);
-    let empty_leaf = Node::<HASH_SIZE, H>::Empty(EmptyLeaf::new());
-    empty_tree.push(empty_leaf);
-    for i in 1..=max_height {
-        empty_tree.push(Node::new_branch(
-            empty_tree[i - 1].clone(),
-            empty_tree[i - 1].clone(),
-        ));
+pub struct TreeBuilder<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(PhantomData<H>);
+
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE, H> {
+    #[allow(clippy::declare_interior_mutable_const)]
+    pub const EMPTY_TREE: LazyCell<Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>> =
+        LazyCell::new(|| Arc::new(Self::build_tree()));
+
+    pub fn empty_tree() -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]> {
+        #[allow(clippy::borrow_interior_mutable_const)]
+        Self::EMPTY_TREE.clone()
     }
-    empty_tree.reverse();
-    let Node::Branch(_branch) = &empty_tree[0] else {
-        panic!("Root should be a branch")
-    };
-    empty_tree
+
+    fn build_tree() -> [Node<HASH_SIZE, H>; TreeSize::USIZE] {
+        let max_height = HASH_SIZE * 8;
+        let mut empty_tree = Vec::with_capacity(max_height + 1);
+        let empty_leaf = Node::<HASH_SIZE, H>::Empty(EmptyLeaf::new());
+        empty_tree.push(empty_leaf);
+
+        for i in 1..=max_height {
+            empty_tree.push(Node::new_branch(
+                empty_tree[i - 1].clone(),
+                empty_tree[i - 1].clone(),
+            ));
+        }
+        empty_tree.reverse();
+
+        let Node::Branch(_branch) = &empty_tree[0] else {
+            panic!("Root should be a branch")
+        };
+
+        empty_tree
+            .try_into()
+            .unwrap_or_else(|_| panic!("Incorrect array size"))
+    }
+
+    pub fn build<KVStore: Db<HASH_SIZE, H>>(db: KVStore) -> MSSMT<KVStore, HASH_SIZE, H> {
+        MSSMT::new_with_tree(db, Self::build_tree())
+    }
 }
 
 pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
@@ -46,9 +72,9 @@ fn bit_index(index: usize, key: &[u8]) -> u8 {
 impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
     MSSMT<KVStore, HASH_SIZE, H>
 {
-    pub const EMPTY_TREE: LazyCell<Vec<Node<HASH_SIZE, H>>> = LazyCell::new(|| build_empty_tree());
     pub fn new(mut db: KVStore) -> Self {
-        let Node::Branch(branch) = Self::EMPTY_TREE[0].clone() else {
+        let empty_tree = TreeBuilder::empty_tree();
+        let Node::Branch(branch) = empty_tree.as_ref()[0].clone() else {
             panic!("Root should be a branch")
         };
         let empty_tree_root_hash = branch.hash();
@@ -56,6 +82,23 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         Self {
             db,
             empty_tree_root_hash,
+            empty_tree,
+            _phantom: PhantomData,
+        }
+    }
+    pub fn new_with_tree(
+        mut db: KVStore,
+        empty_tree: [Node<HASH_SIZE, H>; TreeSize::USIZE],
+    ) -> Self {
+        let Node::Branch(branch) = empty_tree[0].clone() else {
+            panic!("Root should be a branch")
+        };
+        let empty_tree_root_hash = branch.hash();
+        db.update_root(branch);
+        Self {
+            db,
+            empty_tree_root_hash,
+            empty_tree: Arc::new(empty_tree),
             _phantom: PhantomData,
         }
     }
@@ -89,19 +132,18 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         key: [u8; HASH_SIZE],
     ) -> (Node<HASH_SIZE, H>, Node<HASH_SIZE, H>) {
         let get_node = |height: usize, key: [u8; HASH_SIZE]| {
-            if key == Self::EMPTY_TREE[height].hash() {
-                Self::EMPTY_TREE[height].clone()
+            if key == self.empty_tree[height].hash() {
+                self.empty_tree[height].clone()
             } else if let Some(node) = self.db.get_branch(&key) {
                 Node::Branch(node)
             } else if let Some(leaf) = self.db.get_leaf(&key) {
                 Node::Leaf(leaf)
             } else {
-                Self::EMPTY_TREE[height].clone()
+                self.empty_tree[height].clone()
             }
         };
         let node = get_node(height, key);
-        if key != Self::EMPTY_TREE[height].hash() && node.hash() == Self::EMPTY_TREE[height].hash()
-        {
+        if key != self.empty_tree[height].hash() && node.hash() == self.empty_tree[height].hash() {
             panic!("node not found")
         }
         if let Node::Branch(branch) = node {
@@ -182,10 +224,10 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             siblings,
             |height, _current, _sibling, parent| {
                 let prev_parent = prev_parents[Self::max_height() - height - 1];
-                if prev_parent != Self::EMPTY_TREE[height].hash() {
+                if prev_parent != self.empty_tree[height].hash() {
                     branches_delete.push(prev_parent);
                 }
-                if parent.hash() != Self::EMPTY_TREE[height].hash() {
+                if parent.hash() != self.empty_tree[height].hash() {
                     if let Node::Branch(parent) = parent {
                         branches_insertion.push(parent.clone());
                     }

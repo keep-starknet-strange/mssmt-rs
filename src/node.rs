@@ -1,6 +1,8 @@
+use sha2::{Digest, Sha256};
+#[cfg(test)]
+use std::fmt::Display;
 use std::{marker::PhantomData, sync::Arc};
 
-use sha2::{Digest, Sha256};
 impl Hasher<32> for Sha256 {
     fn hash(data: &[u8]) -> [u8; 32] {
         let mut hasher = Sha256::new();
@@ -19,6 +21,12 @@ pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     Leaf(Leaf<HASH_SIZE, H>),
     Branch(Branch<HASH_SIZE, H>),
     Empty(EmptyLeaf<HASH_SIZE, H>),
+}
+#[cfg(test)]
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Node<HASH_SIZE, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(hex::encode(self.hash()).as_str())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
