@@ -14,7 +14,7 @@ impl Hasher<32> for Sha256 {
 pub type Sum = u64;
 
 /// Simple hash trait required to hash the nodes in the tree
-/// 
+///
 /// # Type Parameters
 /// * `HASH_SIZE` - The size of the hash digest in bytes
 pub trait Hasher<const HASH_SIZE: usize> {
@@ -22,7 +22,7 @@ pub trait Hasher<const HASH_SIZE: usize> {
 }
 
 /// All possible nodes in the tree.
-/// 
+///
 /// # Type Parameters
 /// * `HASH_SIZE` - The size of the hash digest in bytes
 /// * `H` - The hasher implementation used for this node

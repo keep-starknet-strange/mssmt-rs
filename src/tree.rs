@@ -62,7 +62,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE
 }
 
 /// Store for the tree nodes
-/// 
+///
 /// This trait must be implemented by any storage backend used with the tree.
 /// It provides the basic operations needed to store and retrieve nodes.
 pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
