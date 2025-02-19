@@ -20,9 +20,9 @@ fn test_empty_tree() {
 
 #[test]
 fn test_leaves_insertion() {
-    let leaf1 = Leaf::new([1; 32], 1);
-    let leaf2 = Leaf::new([2; 32], 2);
-    let leaf3 = Leaf::new([3; 32], 3);
+    let leaf1 = Leaf::new([1; 32].to_vec(), 1);
+    let leaf2 = Leaf::new([2; 32].to_vec(), 2);
+    let leaf3 = Leaf::new([3; 32].to_vec(), 3);
 
     let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
     tree.insert([1; 32], leaf1);
@@ -44,9 +44,9 @@ fn test_leaves_insertion() {
 
 #[test]
 fn test_history_independant() {
-    let leaf1 = Leaf::new([1; 32], 1);
-    let leaf2 = Leaf::new([2; 32], 2);
-    let leaf3 = Leaf::new([3; 32], 3);
+    let leaf1 = Leaf::new([1; 32].to_vec(), 1);
+    let leaf2 = Leaf::new([2; 32].to_vec(), 2);
+    let leaf3 = Leaf::new([3; 32].to_vec(), 3);
 
     let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
     tree.insert([1; 32], leaf1);
@@ -86,10 +86,10 @@ fn test_insertion() {
         }
     }
     let empty_tree = TreeBuilder::<32, Sha256>::empty_tree();
-    let l1 = Leaf::new([1; 32], 1);
-    let l2 = Leaf::new([2; 32], 2);
-    let l3 = Leaf::<32, Sha256>::new([3; 32], 3);
-    let l4 = Leaf::new([4; 32], 4);
+    let l1 = Leaf::new([1; 32].to_vec(), 1);
+    let l2 = Leaf::new([2; 32].to_vec(), 2);
+    let l3 = Leaf::<32, Sha256>::new([3; 32].to_vec(), 3);
+    let l4 = Leaf::new([4; 32].to_vec(), 4);
     let el = EmptyLeaf::new();
     let branch_l1_l2 = Branch::new(Node::Leaf(l1.clone()), Node::Leaf(l2.clone()));
     let branch_l3_l4 = Branch::new(Node::Leaf(l3.clone()), Node::Leaf(l4.clone()));

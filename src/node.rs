@@ -82,7 +82,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyLeaf<HASH_SIZE, 
 /// represented as bytes and a `sum` which is an integer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Leaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
-    value: [u8; HASH_SIZE],
+    value: Vec<u8>,
     sum: Sum,
     node_hash: [u8; HASH_SIZE],
     _phantom: PhantomData<H>,
@@ -159,7 +159,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
         Self::Branch(Branch::<HASH_SIZE, H>::new(left, right))
     }
     /// Creates a [`Node::Leaf`] from a `value` and a `sum`
-    pub fn new_leaf(value: [u8; HASH_SIZE], sum: Sum) -> Self {
+    pub fn new_leaf(value: Vec<u8>, sum: Sum) -> Self {
         Self::Leaf(Leaf::<HASH_SIZE, H>::new(value, sum))
     }
 
@@ -184,7 +184,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
     /// Creates a new [`Leaf`]. This function performs a hash.
-    pub fn new(value: [u8; HASH_SIZE], sum: Sum) -> Self {
+    pub fn new(value: Vec<u8>, sum: Sum) -> Self {
         let node_hash = H::hash(
             [value.as_slice(), sum.to_be_bytes().as_slice()]
                 .concat()
@@ -270,7 +270,7 @@ mod test {
     fn test_non_empty_leaf_node_hash() {
         assert_eq!(
             super::Leaf::<32, Sha256>::new(
-                [
+                vec![
                     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
                     23, 24, 25, 26, 26, 28, 29, 30, 31, 32
                 ],
