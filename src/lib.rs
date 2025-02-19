@@ -28,8 +28,8 @@ pub struct MemoryDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
     for MemoryDb<HASH_SIZE, H>
 {
-    fn get_root_node(&self) -> crate::node::Branch<HASH_SIZE, H> {
-        self.root_node.clone().unwrap()
+    fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>> {
+        self.root_node.clone()
     }
 
     fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<crate::node::Branch<HASH_SIZE, H>> {

@@ -66,7 +66,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE
 /// This trait must be implemented by any storage backend used with the tree.
 /// It provides the basic operations needed to store and retrieve nodes.
 pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
-    fn get_root_node(&self) -> Branch<HASH_SIZE, H>;
+    fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>>;
     fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<Branch<HASH_SIZE, H>>;
     fn get_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<Leaf<HASH_SIZE, H>>;
     fn insert_leaf(&mut self, leaf: Leaf<HASH_SIZE, H>);
@@ -127,11 +127,16 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
 
     /// Root node of the tree.
     pub fn root(&self) -> Branch<HASH_SIZE, H> {
-        self.db.get_root_node()
+        self.db.get_root_node().unwrap_or_else(|| {
+            let Node::Branch(branch) = self.empty_tree.as_ref()[0].clone() else {
+                panic!("Root should be a branch")
+            };
+            branch
+        })
     }
 
     pub fn get_leaf_from_top(&self, key: [u8; HASH_SIZE]) -> Leaf<HASH_SIZE, H> {
-        let mut current_branch = Node::Branch(self.db.get_root_node());
+        let mut current_branch = Node::Branch(self.db.get_root_node().unwrap());
         for i in 0..Self::max_height() {
             if bit_index(i, &key) == 0 {
                 let (left, _) = self.get_children(i, current_branch.hash());
@@ -186,7 +191,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         key: [u8; HASH_SIZE],
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, Node<HASH_SIZE, H>, Node<HASH_SIZE, H>),
     ) -> Node<HASH_SIZE, H> {
-        let mut current = Node::Branch(self.db.get_root_node());
+        let mut current = Node::Branch(self.root());
         for i in 0..Self::max_height() {
             let (left, right) = self.get_children(i, current.hash());
             let (next, sibling) = if bit_index(i, &key) == 0 {
