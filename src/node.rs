@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, Bytes};
 use sha2::{Digest, Sha256};
 #[cfg(test)]
 use std::fmt::Display;
@@ -26,7 +28,7 @@ pub trait Hasher<const HASH_SIZE: usize> {
 /// # Type Parameters
 /// * `HASH_SIZE` - The size of the hash digest in bytes
 /// * `H` - The hasher implementation used for this node
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     /// A leaf node containing a value and sum
     Leaf(Leaf<HASH_SIZE, H>),
@@ -45,9 +47,12 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Node<HASH
 }
 
 /// Represents an empty leaf in the tree. Those leaves have no `value` and hold `0` as sum value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EmptyLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+    #[serde_as(as = "Bytes")]
     node_hash: [u8; HASH_SIZE],
+    #[serde(skip)]
     _phantom: PhantomData<H>,
 }
 
@@ -80,23 +85,29 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyLeaf<HASH_SIZE, 
 /// They are the last row of the tree.
 /// Each leaf contains a `value`
 /// represented as bytes and a `sum` which is an integer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Leaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     value: Vec<u8>,
     sum: Sum,
+    #[serde_as(as = "Bytes")]
     node_hash: [u8; HASH_SIZE],
+    #[serde(skip)]
     _phantom: PhantomData<H>,
 }
 
 /// A branch is a node that has exactly 2 children. Those children can either be
 /// empty leaves or regular leaves.
 /// Those nodes hold the sum of all their descendants.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Branch<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     left: Arc<Node<HASH_SIZE, H>>,
     right: Arc<Node<HASH_SIZE, H>>,
     sum: Sum,
+    #[serde_as(as = "Bytes")]
     node_hash: [u8; HASH_SIZE],
+    #[serde(skip)]
     _phantom: PhantomData<H>,
 }
 
