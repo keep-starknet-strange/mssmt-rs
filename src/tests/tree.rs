@@ -2,57 +2,16 @@
 
 use hex_literal::hex;
 use sha2::Sha256;
-use std::collections::HashMap;
 
 use crate::{
     node::{Branch, EmptyLeaf, Hasher, Leaf, Node},
     tree::{Db, TreeBuilder, MSSMT},
+    MemoryDb,
 };
 
-/// A simple in-memory database implementation for testing
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct TestDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
-    branches: HashMap<[u8; HASH_SIZE], Branch<HASH_SIZE, H>>,
-    leaves: HashMap<[u8; HASH_SIZE], Leaf<HASH_SIZE, H>>,
-    root_node: Option<Branch<HASH_SIZE, H>>,
-}
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
-    for TestDb<HASH_SIZE, H>
-{
-    fn get_root_node(&self) -> crate::node::Branch<HASH_SIZE, H> {
-        self.root_node.clone().unwrap()
-    }
-
-    fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<crate::node::Branch<HASH_SIZE, H>> {
-        self.branches.get(key).cloned()
-    }
-    fn get_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<crate::node::Leaf<HASH_SIZE, H>> {
-        self.leaves.get(key).cloned()
-    }
-
-    fn insert_leaf(&mut self, leaf: crate::node::Leaf<HASH_SIZE, H>) {
-        self.leaves.insert(leaf.hash(), leaf);
-    }
-
-    fn update_root(&mut self, root: crate::node::Branch<HASH_SIZE, H>) {
-        self.root_node = Some(root)
-    }
-
-    fn delete_branch(&mut self, key: &[u8; HASH_SIZE]) {
-        self.branches.remove(key);
-    }
-
-    fn delete_leaf(&mut self, key: &[u8; HASH_SIZE]) {
-        self.leaves.remove(key);
-    }
-
-    fn insert_branch(&mut self, branch: crate::node::Branch<HASH_SIZE, H>) {
-        self.branches.insert(branch.hash(), branch);
-    }
-}
 #[test]
 fn test_empty_tree() {
-    let tree = MSSMT::<_, 32, Sha256>::new(TestDb::default());
+    let tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
     assert_eq!(
         tree.empty_tree_root_hash,
         hex!("b1e8e8f2dc3b266452988cfe169aa73be25405eeead02ab5dd6b3c6fd0ca8d67")
@@ -65,7 +24,7 @@ fn test_leaves_insertion() {
     let leaf2 = Leaf::new([2; 32], 2);
     let leaf3 = Leaf::new([3; 32], 3);
 
-    let mut tree = MSSMT::<_, 32, Sha256>::new(TestDb::default());
+    let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
     tree.insert([1; 32], leaf1);
     assert_eq!(
         tree.root().hash(),
@@ -89,7 +48,7 @@ fn test_history_independant() {
     let leaf2 = Leaf::new([2; 32], 2);
     let leaf3 = Leaf::new([3; 32], 3);
 
-    let mut tree = MSSMT::<_, 32, Sha256>::new(TestDb::default());
+    let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
     tree.insert([1; 32], leaf1);
     tree.insert([3; 32], leaf3);
     tree.insert([2; 32], leaf2);
@@ -108,7 +67,7 @@ fn test_insertion() {
         check_branches: Vec<Vec<Branch<HASH_SIZE, H>>>,
         leaf_level: usize,
     ) {
-        let mut db = TestDb::default();
+        let mut db = MemoryDb::default();
         for leaf in leaves {
             db.insert_leaf(leaf);
         }
