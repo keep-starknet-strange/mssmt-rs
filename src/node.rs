@@ -237,6 +237,10 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> 
         self.node_hash
     }
 
+    pub fn sum(&self) -> Sum {
+        self.sum
+    }
+
     /// Returns the left and right children of this branch.
     pub fn children(&self) -> (&Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>) {
         (&self.left, &self.right)
