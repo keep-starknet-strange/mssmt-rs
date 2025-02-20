@@ -79,6 +79,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyLeaf<HASH_SIZE, 
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
     }
+    pub fn sum(&self) -> Sum {
+        0
+    }
 }
 
 /// A Leaf is a node that has no children and simply hold information.
@@ -212,6 +215,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
     /// Returns the hash of the node. NO HASHING IS DONE HERE.
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
+    }
+    pub fn sum(&self) -> Sum {
+        self.sum
     }
 }
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> {
