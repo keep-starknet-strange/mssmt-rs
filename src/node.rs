@@ -219,6 +219,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
     pub fn sum(&self) -> Sum {
         self.sum
     }
+    pub fn value(&self) -> &[u8] {
+        &self.value
+    }
 }
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> {
     /// Creates a new [`Branch`]. This function performs a hash and an addition.
