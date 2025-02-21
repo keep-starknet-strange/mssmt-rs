@@ -101,6 +101,9 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             _phantom: PhantomData,
         }
     }
+    pub fn db(&self) -> &KVStore {
+        &self.db
+    }
 
     /// Creates a new mssmt from an already built empty tree. No hashing involved.
     pub fn new_with_tree(
