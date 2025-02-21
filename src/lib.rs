@@ -12,6 +12,8 @@
 use std::collections::HashMap;
 
 use node::{Branch, Hasher, Leaf};
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, Bytes};
 use tree::Db;
 
 pub mod node;
@@ -19,9 +21,12 @@ pub mod node;
 mod tests;
 pub mod tree;
 /// A simple in-memory database implementation for testing
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct MemoryDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+    #[serde_as(as = "HashMap<Bytes, _>")]
     branches: HashMap<[u8; HASH_SIZE], Branch<HASH_SIZE, H>>,
+    #[serde_as(as = "HashMap<Bytes, _>")]
     leaves: HashMap<[u8; HASH_SIZE], Leaf<HASH_SIZE, H>>,
     root_node: Option<Branch<HASH_SIZE, H>>,
 }
