@@ -212,6 +212,18 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The node hash won't be recomputed so if the provided hash is incorrect the whole tree will be incorrect
+    pub unsafe fn new_with_hash(value: Vec<u8>, sum: Sum, node_hash: [u8; HASH_SIZE]) -> Self {
+        Self {
+            value,
+            sum,
+            node_hash,
+            _phantom: PhantomData,
+        }
+    }
+
     /// Returns the hash of the node. NO HASHING IS DONE HERE.
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
@@ -237,6 +249,23 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> 
             .as_slice(),
         );
 
+        Self {
+            sum,
+            left: Arc::new(left),
+            right: Arc::new(right),
+            node_hash,
+            _phantom: PhantomData,
+        }
+    }
+    /// # Safety
+    ///
+    /// The node hash won't be recomputed so if the provided hash is incorrect the whole tree will be incorrect
+    pub unsafe fn new_with_hash(
+        left: Node<HASH_SIZE, H>,
+        right: Node<HASH_SIZE, H>,
+        node_hash: [u8; HASH_SIZE],
+        sum: Sum,
+    ) -> Self {
         Self {
             sum,
             left: Arc::new(left),
