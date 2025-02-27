@@ -22,6 +22,10 @@ fn test_leaves_insertion() {
     let leaf2 = Leaf::new([2; 32].to_vec(), 2);
     let leaf3 = Leaf::new([3; 32].to_vec(), 3);
 
+    let leaf4 = Leaf::new( vec![2, 140, 120, 40, 192, 9, 98, 114, 244, 120, 64, 72, 171, 79, 80, 112, 181, 15, 155, 49, 210, 19, 22, 216, 74, 168, 143, 149, 16, 184, 63, 25, 192],  4);
+    let key4=  [177_u8, 231, 231, 200, 71, 83, 63, 150, 221, 247, 213, 231, 188, 27, 190, 148, 112, 218, 129, 131, 93, 195, 197, 44, 143, 203, 191, 17, 154, 100, 103, 100];
+    assert_eq!(leaf4.hash(), [57, 69, 34, 179, 59, 126, 69, 176, 23, 250, 43, 62, 92, 40, 140, 134, 218, 152, 51, 247, 13, 206, 24, 141, 226, 105, 72, 134, 21, 60, 103, 103]);
+
     let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
     let mut compact_tree = CompactMSSMT::<_, 32, Sha256>::new(MemoryDb::default());
 
@@ -57,6 +61,11 @@ fn test_leaves_insertion() {
         compact_tree.root().hash(),
         hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
     );
+    tree.insert(key4, leaf4.clone());
+    compact_tree.insert(key4, leaf4.clone());
+    
+    assert_eq!(tree.root().hash(), compact_tree.root().hash());
+    
 }
 
 #[test]

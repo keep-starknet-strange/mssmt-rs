@@ -113,32 +113,28 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         leaf2: Leaf<HASH_SIZE, H>,
     ) -> Branch<HASH_SIZE, H> {
         // Find the common prefix first
-        let mut common_prefix_len = 0;
-        for i in 0..Self::max_height() {
-            if bit_index(i, &key1) == bit_index(i, &key2) {
-                common_prefix_len += 1;
-            } else {
-                break;
-            }
+        let mut i = 0;
+        while i < Self::max_height() && bit_index(i, &key1) == bit_index(i, &key2) {
+            i += 1;
         }
 
         // Now we create two compacted leaves and insert them as children of
         // a newly created branch
-        let node1 = Node::Compact(CompactLeaf::new_compact_leaf(
-            common_prefix_len + 1,
+        let node1 = CompactLeaf::new_compact_leaf(
+            i + 1,
             key1,
             leaf1,
-        ));
-        let node2 = CompactLeaf::new_compact_leaf(common_prefix_len + 1, key2, leaf2);
-
+        );
+        let node2 = CompactLeaf::new_compact_leaf(i + 1, key2, leaf2);
+        self.db.insert_compact_leaf(node1.clone());
         self.db.insert_compact_leaf(node2.clone());
-        let (left, right) = Self::step_order(common_prefix_len, &key1, node1, Node::Compact(node2));
+        let (left, right) = Self::step_order(i, &key1, Node::Compact(node1), Node::Compact(node2));
         let mut parent = Branch::new(left, right);
         self.db.insert_branch(parent.clone());
 
         // From here we'll walk up to the current level and create branches
         // along the way. Optionally we could compact these branches too.
-        for i in (height..common_prefix_len).rev() {
+        for i in (height..i).rev() {
             let (left, right) = Self::step_order(
                 i,
                 &key1,
@@ -164,8 +160,13 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     ) -> Branch<HASH_SIZE, H> {
         let (left, right) = self.db.get_children(height, root.hash());
 
-        let (next, sibling) = Self::step_order(height, key, left, right);
-
+        let is_left =  bit_index(height, key) == 0;
+        let (next, sibling) = if is_left {
+            (left, right)
+        } else {
+            (right, left)
+        };
+        
         let next_height = height + 1;
 
         let new_node = match next {
@@ -180,7 +181,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
                 } else {
                     // Not an empty subtree, recurse down the tree to find
                     // the insertion point for the leaf.
-                    Node::Branch(self.insert_leaf(key, next_height, root, leaf))
+                    Node::Branch(self.insert_leaf(key, next_height, &node, leaf))
                 }
             }
             Node::Compact(node) => {
@@ -213,8 +214,11 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         }
 
         // Create the new root
-        let (left, right) = Self::step_order(height, key, new_node, sibling);
-        let branch = Branch::new(left, right);
+        let branch = if is_left {
+            Branch::new(new_node, sibling)
+        } else {
+            Branch::new(sibling, new_node)
+        };
 
         // Only insert this new branch if not a default one
         if branch.hash() != self.db.empty_tree()[height].hash() {
