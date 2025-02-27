@@ -1,9 +1,9 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 use typenum::Unsigned;
 
 use crate::{
-    node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node},
-    tree::{bit_index, Db, TreeBuilder, TreeSize},
+    node::{Branch, CompactLeaf, Hasher, Leaf, Node},
+    tree::{bit_index, Db, TreeSize},
 };
 
 pub struct CompactMSSMT<
@@ -12,8 +12,6 @@ pub struct CompactMSSMT<
     H: Hasher<HASH_SIZE> + Clone,
 > {
     db: KVStore,
-    empty_tree_root_hash: [u8; HASH_SIZE],
-    empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
     _phantom: PhantomData<H>,
 }
 
@@ -21,19 +19,14 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     CompactMSSMT<KVStore, HASH_SIZE, H>
 {
     pub fn new(db: KVStore) -> Self {
-        let empty_tree = TreeBuilder::empty_tree();
         Self {
             db,
-            empty_tree_root_hash: empty_tree[0].hash(),
-            empty_tree,
             _phantom: PhantomData,
         }
     }
-    pub fn new_with_tree(db: KVStore, empty_tree: [Node<HASH_SIZE, H>; TreeSize::USIZE]) -> Self {
+    pub fn new_with_tree(db: KVStore) -> Self {
         Self {
             db,
-            empty_tree_root_hash: empty_tree[0].hash(),
-            empty_tree: Arc::new(empty_tree),
             _phantom: PhantomData,
         }
     }
@@ -43,7 +36,14 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     pub fn db(&self) -> &KVStore {
         &self.db
     }
-
+    pub fn root(&self) -> Branch<HASH_SIZE, H> {
+        self.db.get_root_node().unwrap_or_else(|| {
+            let Node::Branch(branch) = self.db.empty_tree().as_ref()[0].clone() else {
+                panic!("Root should be a branch")
+            };
+            branch
+        })
+    }
     pub fn walk_down(
         &self,
         path: &[u8; HASH_SIZE],
@@ -143,7 +143,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
                 i,
                 &key1,
                 Node::Branch(parent),
-                self.empty_tree[i + 1].clone(),
+                self.db.empty_tree()[i + 1].clone(),
             );
             parent = Branch::new(left, right);
             self.db.insert_branch(parent.clone());
@@ -170,7 +170,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
 
         let new_node = match next {
             Node::Branch(node) => {
-                if node.hash() == self.empty_tree[next_height].hash() {
+                if node.hash() == self.db.empty_tree()[next_height].hash() {
                     // This is an empty subtree, so we can just walk up
                     // from the leaf to recreate the node key for this
                     // subtree then replace it with a compacted leaf.
@@ -208,7 +208,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         };
 
         // Delete the old root if not empty
-        if root.hash() != self.empty_tree[height].hash() {
+        if root.hash() != self.db.empty_tree()[height].hash() {
             self.db.delete_branch(&root.hash());
         }
 
@@ -217,7 +217,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         let branch = Branch::new(left, right);
 
         // Only insert this new branch if not a default one
-        if branch.hash() != self.empty_tree[height].hash() {
+        if branch.hash() != self.db.empty_tree()[height].hash() {
             self.db.insert_branch(branch.clone());
         }
 
@@ -227,7 +227,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     /// Insert inserts a leaf node at the given key within the MS-SMT.
     pub fn insert_leaf(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) {
         let root = self.db.get_root_node().unwrap_or_else(|| {
-            let Node::Branch(branch) = self.empty_tree[0].clone() else {
+            let Node::Branch(branch) = self.db.empty_tree()[0].clone() else {
                 panic!("expected branch node")
             };
             branch

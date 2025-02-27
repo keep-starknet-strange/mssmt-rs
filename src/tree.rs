@@ -1,10 +1,7 @@
 use std::{borrow::Borrow, cell::LazyCell, marker::PhantomData, sync::Arc};
 use typenum::{Prod, Sum, Unsigned, U1, U8};
 
-use crate::{
-    compact_tree::CompactMSSMT,
-    node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node},
-};
+use crate::node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node};
 
 /// Define the empty tree array size as (HASH_SIZE * 8) + 1
 pub(crate) type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
@@ -15,15 +12,13 @@ pub(crate) type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
 /// * `H` - Hasher that will be used to hash nodes.
 pub struct MSSMT<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     db: KVStore,
-    pub empty_tree_root_hash: [u8; HASH_SIZE],
-    empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
     _phantom: PhantomData<H>,
 }
 
 /// Helper struct to create an empty mssmt.
-pub struct TreeBuilder<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(PhantomData<H>);
+pub struct EmptyTree<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(PhantomData<H>);
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE, H> {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyTree<HASH_SIZE, H> {
     #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY_TREE: LazyCell<Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>> =
         LazyCell::new(|| Arc::new(Self::build_tree()));
@@ -56,16 +51,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE
         empty_tree
             .try_into()
             .unwrap_or_else(|_| panic!("Incorrect array size"))
-    }
-
-    /// Builds a new MSSMT object from the empty tree.
-    pub fn build<KVStore: Db<HASH_SIZE, H>>(db: KVStore) -> MSSMT<KVStore, HASH_SIZE, H> {
-        MSSMT::new_with_tree(db, Self::build_tree())
-    }
-    pub fn build_compact_tree<KVStore: Db<HASH_SIZE, H>>(
-        db: KVStore,
-    ) -> CompactMSSMT<KVStore, HASH_SIZE, H> {
-        CompactMSSMT::new_with_tree(db, Self::build_tree())
     }
 }
 
@@ -105,16 +90,12 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
 {
     /// Creates a new mssmt. This will build an empty tree which will involve a lot of hashing.
     pub fn new(mut db: KVStore) -> Self {
-        let empty_tree = TreeBuilder::empty_tree();
-        let Node::Branch(branch) = empty_tree.as_ref()[0].clone() else {
+        let Node::Branch(branch) = db.empty_tree().as_ref()[0].clone() else {
             panic!("Root should be a branch")
         };
-        let empty_tree_root_hash = branch.hash();
         db.update_root(branch);
         Self {
             db,
-            empty_tree_root_hash,
-            empty_tree,
             _phantom: PhantomData,
         }
     }
@@ -130,12 +111,9 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         let Node::Branch(branch) = empty_tree[0].clone() else {
             panic!("Root should be a branch")
         };
-        let empty_tree_root_hash = branch.hash();
         db.update_root(branch);
         Self {
             db,
-            empty_tree_root_hash,
-            empty_tree: Arc::new(empty_tree),
             _phantom: PhantomData,
         }
     }
@@ -148,7 +126,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     /// Root node of the tree.
     pub fn root(&self) -> Branch<HASH_SIZE, H> {
         self.db.get_root_node().unwrap_or_else(|| {
-            let Node::Branch(branch) = self.empty_tree.as_ref()[0].clone() else {
+            let Node::Branch(branch) = self.db.empty_tree().as_ref()[0].clone() else {
                 panic!("Root should be a branch")
             };
             branch
@@ -255,10 +233,10 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             siblings,
             |height, _current, _sibling, parent| {
                 let prev_parent = prev_parents[Self::max_height() - height - 1];
-                if prev_parent != self.empty_tree[height].hash() {
+                if prev_parent != self.db.empty_tree()[height].hash() {
                     branches_delete.push(prev_parent);
                 }
-                if parent.hash() != self.empty_tree[height].hash() {
+                if parent.hash() != self.db.empty_tree()[height].hash() {
                     if let Node::Branch(parent) = parent {
                         branches_insertion.push(parent.clone());
                     }

@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::tree::{bit_index, TreeBuilder};
+use crate::tree::{bit_index, EmptyTree};
 
 impl Hasher<32> for Sha256 {
     fn hash(data: &[u8]) -> [u8; 32] {
@@ -344,7 +344,7 @@ pub struct CompactLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE, H> {
     pub fn new_compact_leaf(height: usize, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Self {
         let mut current = Node::Leaf(leaf.clone());
-        let empty_tree = TreeBuilder::<HASH_SIZE, H>::empty_tree();
+        let empty_tree = EmptyTree::<HASH_SIZE, H>::empty_tree();
 
         for i in (height..HASH_SIZE * 8).rev() {
             if bit_index(i, &key) == 0 {
@@ -374,7 +374,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE
     }
     pub fn extract(&self, height: usize) -> Node<HASH_SIZE, H> {
         let mut current = Node::Leaf(self.leaf.clone());
-        let empty_tree = TreeBuilder::<HASH_SIZE, H>::empty_tree();
+        let empty_tree = EmptyTree::<HASH_SIZE, H>::empty_tree();
 
         // Walk up and recreate the missing branches
         for j in (height + 1..HASH_SIZE * 8).rev() {

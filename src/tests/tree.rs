@@ -5,7 +5,7 @@ use sha2::Sha256;
 
 use crate::{
     node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node},
-    tree::{Db, TreeBuilder, MSSMT},
+    tree::{Db, EmptyTree, MSSMT},
     MemoryDb,
 };
 
@@ -13,7 +13,7 @@ use crate::{
 fn test_empty_tree() {
     let tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
     assert_eq!(
-        tree.empty_tree_root_hash,
+        tree.root().hash(),
         hex!("b1e8e8f2dc3b266452988cfe169aa73be25405eeead02ab5dd6b3c6fd0ca8d67")
     );
 }
@@ -84,7 +84,7 @@ fn test_insertion() {
             }
         }
     }
-    let empty_tree = TreeBuilder::<32, Sha256>::empty_tree();
+    let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
     let l1 = Leaf::new([1; 32].to_vec(), 1);
     let l2 = Leaf::new([2; 32].to_vec(), 2);
     let l3 = Leaf::<32, Sha256>::new([3; 32].to_vec(), 3);
