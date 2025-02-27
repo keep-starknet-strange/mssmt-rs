@@ -1,10 +1,11 @@
 use std::{borrow::Borrow, cell::LazyCell, marker::PhantomData, sync::Arc};
 use typenum::{Prod, Sum, Unsigned, U1, U8};
 
-use crate::node::{Branch, EmptyLeaf, Hasher, Leaf, Node};
+use crate::{compact_tree::CompactMSSMT, node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node}};
 
 /// Define the empty tree array size as (HASH_SIZE * 8) + 1
-type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
+pub(crate) type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
+
 
 /// Merkle sum sparse merkle tree.
 /// * `KVStore` - Key value store for nodes.
@@ -20,7 +21,7 @@ pub struct MSSMT<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HA
 /// Helper struct to create an empty mssmt.
 pub struct TreeBuilder<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(PhantomData<H>);
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE, H> {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, > TreeBuilder<HASH_SIZE, H> {
     #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY_TREE: LazyCell<Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>> =
         LazyCell::new(|| Arc::new(Self::build_tree()));
@@ -59,6 +60,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE
     pub fn build<KVStore: Db<HASH_SIZE, H>>(db: KVStore) -> MSSMT<KVStore, HASH_SIZE, H> {
         MSSMT::new_with_tree(db, Self::build_tree())
     }
+    pub fn build_compact_tree<KVStore: Db<HASH_SIZE, H>>(db: KVStore) -> CompactMSSMT<KVStore, HASH_SIZE, H> {
+        CompactMSSMT::new_with_tree(db, Self::build_tree())
+    }
 }
 
 /// Store for the tree nodes
@@ -69,14 +73,18 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>>;
     fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<Branch<HASH_SIZE, H>>;
     fn get_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<Leaf<HASH_SIZE, H>>;
+    fn get_compact_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<CompactLeaf<HASH_SIZE, H>>;
+    fn get_children(&self, height: usize, key: [u8; HASH_SIZE]) -> (Node<HASH_SIZE, H>, Node<HASH_SIZE, H>);
     fn insert_leaf(&mut self, leaf: Leaf<HASH_SIZE, H>);
     fn insert_branch(&mut self, branch: Branch<HASH_SIZE, H>);
+    fn insert_compact_leaf(&mut self, compact_leaf: CompactLeaf<HASH_SIZE, H>);
     fn update_root(&mut self, root: Branch<HASH_SIZE, H>);
     fn delete_branch(&mut self, key: &[u8; HASH_SIZE]);
     fn delete_leaf(&mut self, key: &[u8; HASH_SIZE]);
+    fn delete_compact_leaf(&mut self, key: &[u8; HASH_SIZE]);
 }
 
-fn bit_index(index: usize, key: &[u8]) -> u8 {
+pub(crate) fn bit_index(index: usize, key: &[u8]) -> u8 {
     // `index as usize / 8` to get the index of the interesting byte
     // `index % 8` to get the interesting bit index in the previously selected byte
     // right shift it and keep only this interesting bit with & 1.
@@ -142,10 +150,10 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         let mut current_branch = Node::Branch(self.db.get_root_node().unwrap());
         for i in 0..Self::max_height() {
             if bit_index(i, &key) == 0 {
-                let (left, _) = self.get_children(i, current_branch.hash());
+                let (left, _) = self.db.get_children(i, current_branch.hash());
                 current_branch = left;
             } else {
-                let (_, right) = self.get_children(i, current_branch.hash());
+                let (_, right) = self.db.get_children(i, current_branch.hash());
                 current_branch = right;
             }
         }
@@ -153,39 +161,12 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             Node::Leaf(leaf) => leaf,
             Node::Branch(_) => panic!("expected leaf found branch"),
             Node::Empty(_) => panic!("Empty node"),
+            Node::Compact(_) => unreachable!("tree isn't compact"),
         }
     }
 
-    /// Get the children of a node from the key.
-    pub fn get_children(
-        &self,
-        height: usize,
-        key: [u8; HASH_SIZE],
-    ) -> (Node<HASH_SIZE, H>, Node<HASH_SIZE, H>) {
-        let get_node = |height: usize, key: [u8; HASH_SIZE]| {
-            if key == self.empty_tree[height].hash() {
-                self.empty_tree[height].clone()
-            } else if let Some(node) = self.db.get_branch(&key) {
-                Node::Branch(node)
-            } else if let Some(leaf) = self.db.get_leaf(&key) {
-                Node::Leaf(leaf)
-            } else {
-                self.empty_tree[height].clone()
-            }
-        };
-        let node = get_node(height, key);
-        if key != self.empty_tree[height].hash() && node.hash() == self.empty_tree[height].hash() {
-            panic!("node not found")
-        }
-        if let Node::Branch(branch) = node {
-            (
-                get_node(height + 1, branch.left().hash()),
-                get_node(height + 1, branch.right().hash()),
-            )
-        } else {
-            panic!("Should be a branch node")
-        }
-    }
+
+   
 
     /// Walk down the tree from the root node to the node.
     /// * `for_each` - Closure that is executed at each step of the traversal of the tree.
@@ -196,7 +177,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     ) -> Node<HASH_SIZE, H> {
         let mut current = Node::Branch(self.root());
         for i in 0..Self::max_height() {
-            let (left, right) = self.get_children(i, current.hash());
+            let (left, right) = self.db.get_children(i, current.hash());
             let (next, sibling) = if bit_index(i, &key) == 0 {
                 (left, right)
             } else {
@@ -209,6 +190,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             Node::Leaf(leaf) => Node::Leaf(leaf),
             Node::Branch(_) => panic!("expected leaf found branch"),
             Node::Empty(empty) => Node::Empty(empty),
+            Node::Compact(_) => unreachable!("tree isn't compact"),
         }
     }
 

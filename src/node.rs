@@ -3,7 +3,10 @@ use serde_with::{serde_as, Bytes};
 use sha2::{Digest, Sha256};
 #[cfg(test)]
 use std::fmt::Display;
+use std::fmt::Debug;
 use std::{marker::PhantomData, sync::Arc};
+
+use crate::tree::{bit_index, TreeBuilder};
 
 impl Hasher<32> for Sha256 {
     fn hash(data: &[u8]) -> [u8; 32] {
@@ -23,17 +26,20 @@ pub trait Hasher<const HASH_SIZE: usize> {
     fn hash(data: &[u8]) -> [u8; HASH_SIZE];
 }
 
+
 /// All possible nodes in the tree.
 ///
 /// # Type Parameters
 /// * `HASH_SIZE` - The size of the hash digest in bytes
 /// * `H` - The hasher implementation used for this node
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     /// A leaf node containing a value and sum
     Leaf(Leaf<HASH_SIZE, H>),
     /// A branch node with two children
     Branch(Branch<HASH_SIZE, H>),
+    /// A compact leaf node containing a value and sum
+    Compact(CompactLeaf<HASH_SIZE, H>),
     /// An empty leaf representing unset branches
     Empty(EmptyLeaf<HASH_SIZE, H>),
 }
@@ -41,6 +47,24 @@ pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
 /// Utils for debugging purpose.
 #[cfg(test)]
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Node<HASH_SIZE, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(hex::encode(self.hash()).as_str())
+    }
+}
+#[cfg(test)]
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Branch<HASH_SIZE, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(hex::encode(self.hash()).as_str())
+    }
+}
+#[cfg(test)]
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for CompactLeaf<HASH_SIZE, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(hex::encode(self.hash()).as_str())
+    }
+}
+#[cfg(test)]
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Leaf<HASH_SIZE, H> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(hex::encode(self.hash()).as_str())
     }
@@ -103,7 +127,7 @@ pub struct Leaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
 /// empty leaves or regular leaves.
 /// Those nodes hold the sum of all their descendants.
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Branch<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     left: Arc<Node<HASH_SIZE, H>>,
     right: Arc<Node<HASH_SIZE, H>>,
@@ -167,6 +191,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
     }
 }
 
+
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
     /// Creates a [`Node::Branch`] from 2 [`Node`]
     pub fn new_branch(left: Node<HASH_SIZE, H>, right: Node<HASH_SIZE, H>) -> Self {
@@ -183,6 +208,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
             Self::Leaf(leaf) => leaf.hash(),
             Self::Branch(branch) => branch.hash(),
             Self::Empty(empty) => empty.hash(),
+            Self::Compact(compact) => compact.hash(),
         }
     }
 
@@ -191,7 +217,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
         match self {
             Self::Leaf(leaf) => leaf.sum,
             Self::Branch(branch) => branch.sum,
-            Self::Empty(_) => 0,
+            Self::Empty(empty) => empty.sum(),
+            Self::Compact(compact) => compact.sum(),
         }
     }
 }
@@ -303,6 +330,66 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> 
     /// Returns the right children of this branch.
     pub fn right(&self) -> &Node<HASH_SIZE, H> {
         &self.right
+    }
+}
+
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompactLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+    #[serde_as(as = "Bytes")]
+    node_hash: [u8; HASH_SIZE],
+    leaf: Leaf<HASH_SIZE, H>,
+    #[serde_as(as = "Bytes")]
+    key: [u8; HASH_SIZE],
+}
+
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE, H> {
+    pub fn new_compact_leaf(height: usize, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Self {
+        let mut current = Node::Leaf(leaf.clone());
+        let empty_tree = TreeBuilder::<HASH_SIZE, H>::empty_tree();
+
+        for i in (height..HASH_SIZE * 8).rev() {
+            if bit_index(i, &key) == 0 {
+                current = Node::new_branch(current, empty_tree[i+1].clone());
+            } else {
+                current = Node::new_branch(empty_tree[i+1].clone(), current);
+            }
+        }
+
+        Self {
+            node_hash: current.hash(),
+            leaf,
+            key,
+        }
+    }
+    pub fn hash(&self) -> [u8; HASH_SIZE] {
+        self.node_hash
+    }
+    pub fn leaf(&self) -> &Leaf<HASH_SIZE, H> {
+        &self.leaf
+    }
+    pub fn key(&self) -> &[u8; HASH_SIZE] {
+        &self.key
+    }
+    pub fn sum(&self) -> u64 {
+        self.leaf.sum()
+    }
+    pub fn extract(&self, height: usize) -> Node<HASH_SIZE, H> {
+        let mut current = Node::Leaf(self.leaf.clone());
+        let empty_tree = TreeBuilder::<HASH_SIZE, H>::empty_tree();
+
+        // Walk up and recreate the missing branches
+        for j in (height + 1..HASH_SIZE * 8).rev() {
+            let (left, right) = if bit_index(j - 1, &self.key) == 0 {
+                (current, empty_tree[j].clone())
+            } else {
+                (empty_tree[j].clone(), current)
+            };
+
+            current = Node::new_branch(left, right);
+        }
+
+        current
     }
 }
 
