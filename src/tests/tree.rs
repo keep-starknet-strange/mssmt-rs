@@ -4,9 +4,7 @@ use hex_literal::hex;
 use sha2::Sha256;
 
 use crate::{
-    node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node},
-    tree::{Db, EmptyTree, MSSMT},
-    MemoryDb,
+    compact_tree::CompactMSSMT, node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node}, tree::{Db, EmptyTree, MSSMT}, MemoryDb
 };
 
 #[test]
@@ -25,19 +23,38 @@ fn test_leaves_insertion() {
     let leaf3 = Leaf::new([3; 32].to_vec(), 3);
 
     let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
-    tree.insert([1; 32], leaf1);
+    let mut compact_tree = CompactMSSMT::<_, 32, Sha256>::new(MemoryDb::default());
+
+    tree.insert([1; 32], leaf1.clone());
+    compact_tree.insert([1; 32], leaf1.clone());
     assert_eq!(
         tree.root().hash(),
         hex!("b46e250d98aa9917abdd1012f72c03ab9a59f6de5253d963a99b7d69c2eca3da")
     );
-    tree.insert([2; 32], leaf2);
+    assert_eq!(
+        compact_tree.root().hash(),
+        hex!("b46e250d98aa9917abdd1012f72c03ab9a59f6de5253d963a99b7d69c2eca3da")
+    );
+
+    tree.insert([2; 32], leaf2.clone());
+    compact_tree.insert([2; 32], leaf2.clone());
     assert_eq!(
         tree.root().hash(),
         hex!("dc5ab9a0f0b56e215b550b2946cdc72aae2b013aa4790ee4d809a9b43cf2d9aa")
     );
-    tree.insert([3; 32], leaf3);
+    assert_eq!(
+        compact_tree.root().hash(),
+        hex!("dc5ab9a0f0b56e215b550b2946cdc72aae2b013aa4790ee4d809a9b43cf2d9aa")
+    );
+
+    tree.insert([3; 32], leaf3.clone());
+    compact_tree.insert([3; 32], leaf3.clone());
     assert_eq!(
         tree.root().hash(),
+        hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
+    );
+    assert_eq!(
+        compact_tree.root().hash(),
         hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
     );
 }
@@ -49,11 +66,19 @@ fn test_history_independant() {
     let leaf3 = Leaf::new([3; 32].to_vec(), 3);
 
     let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
-    tree.insert([1; 32], leaf1);
-    tree.insert([3; 32], leaf3);
-    tree.insert([2; 32], leaf2);
+    let mut compact_tree = CompactMSSMT::<_, 32, Sha256>::new(MemoryDb::default());
+    tree.insert([1; 32], leaf1.clone());
+    tree.insert([3; 32], leaf3.clone());
+    tree.insert([2; 32], leaf2.clone());
+    compact_tree.insert([3; 32], leaf3.clone());
+    compact_tree.insert([2; 32], leaf2.clone());
+    compact_tree.insert([1; 32], leaf1.clone());
     assert_eq!(
         tree.root().hash(),
+        hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
+    );
+    assert_eq!(
+        compact_tree.root().hash(),
         hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
     );
 }

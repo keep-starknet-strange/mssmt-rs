@@ -155,7 +155,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     /// insert inserts the key at the current height either by adding a new compacted
     /// leaf, merging an existing leaf with the passed leaf in a new subtree or by
     /// recursing down further.
-    pub fn insert(
+    pub(crate) fn insert_leaf(
         &mut self,
         key: &[u8; HASH_SIZE],
         height: usize,
@@ -180,7 +180,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
                 } else {
                     // Not an empty subtree, recurse down the tree to find
                     // the insertion point for the leaf.
-                    Node::Branch(self.insert(key, next_height, root, leaf))
+                    Node::Branch(self.insert_leaf(key, next_height, root, leaf))
                 }
             }
             Node::Compact(node) => {
@@ -225,7 +225,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
     }
 
     /// Insert inserts a leaf node at the given key within the MS-SMT.
-    pub fn insert_leaf(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) {
+    pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) {
         let root = self.db.get_root_node().unwrap_or_else(|| {
             let Node::Branch(branch) = self.db.empty_tree()[0].clone() else {
                 panic!("expected branch node")
@@ -244,7 +244,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             );
         }
 
-        let new_root = self.insert(&key, 0, &root, leaf);
+        let new_root = self.insert_leaf(&key, 0, &root, leaf);
         self.db.update_root(new_root);
     }
 
