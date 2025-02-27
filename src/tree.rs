@@ -149,6 +149,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             Node::Branch(_) => panic!("expected leaf found branch"),
             Node::Empty(_) => panic!("Empty node"),
             Node::Compact(_) => unreachable!("tree isn't compact"),
+            Node::Computed(_) => unreachable!("Only used for dbs"),
         }
     }
 
@@ -175,6 +176,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             Node::Branch(_) => panic!("expected leaf found branch"),
             Node::Empty(empty) => Node::Empty(empty),
             Node::Compact(_) => unreachable!("tree isn't compact"),
+            Node::Computed(_) => unreachable!("Only used for dbs"),
         }
     }
 

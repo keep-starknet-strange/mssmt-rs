@@ -41,6 +41,30 @@ pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     Compact(CompactLeaf<HASH_SIZE, H>),
     /// An empty leaf representing unset branches
     Empty(EmptyLeaf<HASH_SIZE, H>),
+    /// A computed node
+    Computed(ComputedNode<HASH_SIZE>),
+}
+
+#[serde_as]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComputedNode<const HASH_SIZE: usize> {
+    #[serde_as(as = "Bytes")]
+    node_hash: [u8; HASH_SIZE],
+    sum: Sum
+}
+impl<const HASH_SIZE: usize> ComputedNode<HASH_SIZE> {
+    pub fn new(node_hash: [u8; HASH_SIZE], sum: Sum) -> Self {
+        Self {
+            node_hash,
+            sum,
+        }
+    }
+    pub fn hash(&self) -> [u8; HASH_SIZE] {
+        self.node_hash
+    }
+    pub fn sum(&self) -> Sum {
+        self.sum
+    }
 }
 
 /// Utils for debugging purpose.
@@ -207,6 +231,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
             Self::Branch(branch) => branch.hash(),
             Self::Empty(empty) => empty.hash(),
             Self::Compact(compact) => compact.hash(),
+            Self::Computed(computed) => computed.hash(),
         }
     }
 
@@ -217,6 +242,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
             Self::Branch(branch) => branch.sum,
             Self::Empty(empty) => empty.sum(),
             Self::Compact(compact) => compact.sum(),
+            Self::Computed(computed) => computed.sum(),
         }
     }
 }
