@@ -6,8 +6,6 @@ use crate::{
     tree::{bit_index, Db, TreeBuilder, TreeSize},
 };
 
-
-
 pub struct CompactMSSMT<
     KVStore: Db<HASH_SIZE, H>,
     const HASH_SIZE: usize,
@@ -19,15 +17,25 @@ pub struct CompactMSSMT<
     _phantom: PhantomData<H>,
 }
 
-
-
-impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactMSSMT<KVStore, HASH_SIZE, H> {
+impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
+    CompactMSSMT<KVStore, HASH_SIZE, H>
+{
     pub fn new(db: KVStore) -> Self {
         let empty_tree = TreeBuilder::empty_tree();
-        Self { db, empty_tree_root_hash: empty_tree[0].hash(), empty_tree, _phantom: PhantomData }
+        Self {
+            db,
+            empty_tree_root_hash: empty_tree[0].hash(),
+            empty_tree,
+            _phantom: PhantomData,
+        }
     }
     pub fn new_with_tree(db: KVStore, empty_tree: [Node<HASH_SIZE, H>; TreeSize::USIZE]) -> Self {
-        Self { db, empty_tree_root_hash: empty_tree[0].hash(), empty_tree: Arc::new(empty_tree), _phantom: PhantomData }
+        Self {
+            db,
+            empty_tree_root_hash: empty_tree[0].hash(),
+            empty_tree: Arc::new(empty_tree),
+            _phantom: PhantomData,
+        }
     }
     pub fn max_height() -> usize {
         TreeSize::USIZE
@@ -36,7 +44,11 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         &self.db
     }
 
-    pub fn walk_down(&self, path: &[u8; HASH_SIZE], mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>)) -> Leaf<HASH_SIZE, H> {
+    pub fn walk_down(
+        &self,
+        path: &[u8; HASH_SIZE],
+        mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>),
+    ) -> Leaf<HASH_SIZE, H> {
         let mut current = Node::Branch(self.db.get_root_node().unwrap());
         for i in 0..Self::max_height() {
             let (left, right) = self.db.get_children(i, current.hash());
@@ -52,7 +64,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
                     // passed key.
                     for j in i..Self::max_height() {
                         for_each(j, &next, &sibling, &current);
-                        current = next.clone(); 
+                        current = next.clone();
 
                         if j < Self::max_height() - 1 {
                             // Since we have all the branches we
@@ -60,13 +72,13 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
                             // continue walking down.
                             let branch = match &current {
                                 Node::Branch(b) => b,
-                                _ => panic!("expected branch node")
+                                _ => panic!("expected branch node"),
                             };
                             let (n, s) = Self::step_order(
                                 j + 1,
                                 path,
                                 branch.left().clone(),
-                                branch.right().clone()
+                                branch.right().clone(),
                             );
                             next = n;
                             sibling = s;
@@ -80,7 +92,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
                 _ => {
                     for_each(i, &next, &sibling, &current);
                     current = next;
-                },
+                }
             }
         }
         let Node::Leaf(leaf) = current else {
@@ -117,11 +129,7 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             key1,
             leaf1,
         ));
-        let node2 = CompactLeaf::new_compact_leaf(
-            common_prefix_len + 1,
-            key2,
-            leaf2,
-        );
+        let node2 = CompactLeaf::new_compact_leaf(common_prefix_len + 1, key2, leaf2);
 
         self.db.insert_compact_leaf(node2.clone());
         let (left, right) = Self::step_order(common_prefix_len, &key1, node1, Node::Compact(node2));
@@ -131,7 +139,12 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         // From here we'll walk up to the current level and create branches
         // along the way. Optionally we could compact these branches too.
         for i in (height..common_prefix_len).rev() {
-            let (left, right) = Self::step_order(i, &key1, Node::Branch(parent), self.empty_tree[i + 1].clone());
+            let (left, right) = Self::step_order(
+                i,
+                &key1,
+                Node::Branch(parent),
+                self.empty_tree[i + 1].clone(),
+            );
             parent = Branch::new(left, right);
             self.db.insert_branch(parent.clone());
         }
@@ -149,7 +162,6 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         root: &Branch<HASH_SIZE, H>,
         leaf: Leaf<HASH_SIZE, H>,
     ) -> Branch<HASH_SIZE, H> {
-
         let (left, right) = self.db.get_children(height, root.hash());
 
         let (next, sibling) = Self::step_order(height, key, left, right);
@@ -181,7 +193,6 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
                     let new_leaf = CompactLeaf::new_compact_leaf(next_height, *key, leaf);
                     self.db.insert_compact_leaf(new_leaf.clone());
                     Node::Compact(new_leaf)
-                    
                 } else {
                     // Merge the two leaves into a subtree.
                     Node::Branch(self.merge(
@@ -227,10 +238,13 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
         let sum_root = root.sum();
         let sum_leaf = leaf.sum();
         if sum_root.checked_add(sum_leaf).is_none() {
-            panic!("compact tree leaf insert sum overflow, root: {}, leaf: {}", sum_root, sum_leaf);
+            panic!(
+                "compact tree leaf insert sum overflow, root: {}, leaf: {}",
+                sum_root, sum_leaf
+            );
         }
 
-        let new_root = self.insert(&key,0, &root, leaf);
+        let new_root = self.insert(&key, 0, &root, leaf);
         self.db.update_root(new_root);
     }
 

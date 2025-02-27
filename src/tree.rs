@@ -1,11 +1,13 @@
 use std::{borrow::Borrow, cell::LazyCell, marker::PhantomData, sync::Arc};
 use typenum::{Prod, Sum, Unsigned, U1, U8};
 
-use crate::{compact_tree::CompactMSSMT, node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node}};
+use crate::{
+    compact_tree::CompactMSSMT,
+    node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node},
+};
 
 /// Define the empty tree array size as (HASH_SIZE * 8) + 1
 pub(crate) type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
-
 
 /// Merkle sum sparse merkle tree.
 /// * `KVStore` - Key value store for nodes.
@@ -21,7 +23,7 @@ pub struct MSSMT<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HA
 /// Helper struct to create an empty mssmt.
 pub struct TreeBuilder<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(PhantomData<H>);
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, > TreeBuilder<HASH_SIZE, H> {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> TreeBuilder<HASH_SIZE, H> {
     #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY_TREE: LazyCell<Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>> =
         LazyCell::new(|| Arc::new(Self::build_tree()));
@@ -60,7 +62,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, > TreeBuilder<HASH_SI
     pub fn build<KVStore: Db<HASH_SIZE, H>>(db: KVStore) -> MSSMT<KVStore, HASH_SIZE, H> {
         MSSMT::new_with_tree(db, Self::build_tree())
     }
-    pub fn build_compact_tree<KVStore: Db<HASH_SIZE, H>>(db: KVStore) -> CompactMSSMT<KVStore, HASH_SIZE, H> {
+    pub fn build_compact_tree<KVStore: Db<HASH_SIZE, H>>(
+        db: KVStore,
+    ) -> CompactMSSMT<KVStore, HASH_SIZE, H> {
         CompactMSSMT::new_with_tree(db, Self::build_tree())
     }
 }
@@ -74,10 +78,15 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<Branch<HASH_SIZE, H>>;
     fn get_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<Leaf<HASH_SIZE, H>>;
     fn get_compact_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<CompactLeaf<HASH_SIZE, H>>;
-    fn get_children(&self, height: usize, key: [u8; HASH_SIZE]) -> (Node<HASH_SIZE, H>, Node<HASH_SIZE, H>);
+    fn get_children(
+        &self,
+        height: usize,
+        key: [u8; HASH_SIZE],
+    ) -> (Node<HASH_SIZE, H>, Node<HASH_SIZE, H>);
     fn insert_leaf(&mut self, leaf: Leaf<HASH_SIZE, H>);
     fn insert_branch(&mut self, branch: Branch<HASH_SIZE, H>);
     fn insert_compact_leaf(&mut self, compact_leaf: CompactLeaf<HASH_SIZE, H>);
+    fn empty_tree(&self) -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>;
     fn update_root(&mut self, root: Branch<HASH_SIZE, H>);
     fn delete_branch(&mut self, key: &[u8; HASH_SIZE]);
     fn delete_leaf(&mut self, key: &[u8; HASH_SIZE]);
@@ -164,9 +173,6 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             Node::Compact(_) => unreachable!("tree isn't compact"),
         }
     }
-
-
-   
 
     /// Walk down the tree from the root node to the node.
     /// * `for_each` - Closure that is executed at each step of the traversal of the tree.

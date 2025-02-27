@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
 use sha2::{Digest, Sha256};
+use std::fmt::Debug;
 #[cfg(test)]
 use std::fmt::Display;
-use std::fmt::Debug;
 use std::{marker::PhantomData, sync::Arc};
 
 use crate::tree::{bit_index, TreeBuilder};
@@ -25,7 +25,6 @@ pub type Sum = u64;
 pub trait Hasher<const HASH_SIZE: usize> {
     fn hash(data: &[u8]) -> [u8; HASH_SIZE];
 }
-
 
 /// All possible nodes in the tree.
 ///
@@ -191,7 +190,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
     }
 }
 
-
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
     /// Creates a [`Node::Branch`] from 2 [`Node`]
     pub fn new_branch(left: Node<HASH_SIZE, H>, right: Node<HASH_SIZE, H>) -> Self {
@@ -350,9 +348,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE
 
         for i in (height..HASH_SIZE * 8).rev() {
             if bit_index(i, &key) == 0 {
-                current = Node::new_branch(current, empty_tree[i+1].clone());
+                current = Node::new_branch(current, empty_tree[i + 1].clone());
             } else {
-                current = Node::new_branch(empty_tree[i+1].clone(), current);
+                current = Node::new_branch(empty_tree[i + 1].clone(), current);
             }
         }
 

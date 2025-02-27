@@ -104,7 +104,10 @@ fn test_insertion() {
     let cl3 = CompactLeaf::new_compact_leaf(99, k3, l3.clone());
     let cl4 = CompactLeaf::new_compact_leaf(99, k4, l4.clone());
     let branch_cl1_cl2 = Branch::new(Node::Compact(cl1.clone()), Node::Compact(cl2.clone()));
-    let branch_cl1_cl2_cl3 = Branch::new(Node::Branch(branch_cl1_cl2.clone()), Node::Compact(cl3.clone()));
+    let branch_cl1_cl2_cl3 = Branch::new(
+        Node::Branch(branch_cl1_cl2.clone()),
+        Node::Compact(cl3.clone()),
+    );
     let branch_cl4_eb = Branch::new(Node::Compact(cl4.clone()), empty_tree[99].clone());
 
     //       R
@@ -224,12 +227,19 @@ fn test_insertion() {
     //    /  \
     //  CL1 CL2
     let b2 = branch_cl1_cl2_cl3.clone();
-    let root_branch = Branch::new(Node::Branch(b2.clone()), Node::Branch(branch_cl4_eb.clone()));
+    let root_branch = Branch::new(
+        Node::Branch(b2.clone()),
+        Node::Branch(branch_cl4_eb.clone()),
+    );
     let mut db = MemoryDb::default();
     for cl in [cl1, cl2, cl3, cl4] {
         db.insert_compact_leaf(cl);
     }
-    let branches = [vec![root_branch], vec![b2, branch_cl4_eb], vec![branch_cl1_cl2]];
+    let branches = [
+        vec![root_branch],
+        vec![b2, branch_cl4_eb],
+        vec![branch_cl1_cl2],
+    ];
     for branches in branches.clone() {
         for branch in branches {
             db.insert_branch(branch);
@@ -242,6 +252,4 @@ fn test_insertion() {
             assert_eq!(branch.right().hash(), right.hash());
         }
     }
-    
-
 }

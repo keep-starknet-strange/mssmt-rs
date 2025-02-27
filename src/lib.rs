@@ -9,12 +9,13 @@
 //! - Cryptographic verification
 //! - Flexible storage backend through the `Db` trait
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use node::{Branch, CompactLeaf, Hasher, Leaf, Node};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
-use tree::{Db, TreeBuilder};
+use tree::{Db, TreeBuilder, TreeSize};
+use typenum::Unsigned;
 
 pub mod compact_tree;
 pub mod node;
@@ -23,7 +24,7 @@ mod tests;
 pub mod tree;
 /// A simple in-memory database implementation for testing
 #[serde_as]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     #[serde_as(as = "HashMap<Bytes, _>")]
     branches: HashMap<[u8; HASH_SIZE], Branch<HASH_SIZE, H>>,
@@ -31,6 +32,8 @@ pub struct MemoryDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     leaves: HashMap<[u8; HASH_SIZE], Leaf<HASH_SIZE, H>>,
     #[serde_as(as = "HashMap<Bytes, _>")]
     compact_leaves: HashMap<[u8; HASH_SIZE], CompactLeaf<HASH_SIZE, H>>,
+    #[serde(skip, default = "TreeBuilder::empty_tree")]
+    empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
     root_node: Option<Branch<HASH_SIZE, H>>,
 }
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
@@ -55,8 +58,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
         key: [u8; HASH_SIZE],
     ) -> (Node<HASH_SIZE, H>, Node<HASH_SIZE, H>) {
         let get_node = |height: usize, key: [u8; HASH_SIZE]| {
-            if key == TreeBuilder::<HASH_SIZE, H>::empty_tree()[height].hash() {
-                TreeBuilder::empty_tree()[height].clone()
+            if key == self.empty_tree()[height].hash() {
+                self.empty_tree()[height].clone()
             } else if let Some(node) = self.get_branch(&key) {
                 Node::Branch(node)
             } else if let Some(leaf) = self.get_leaf(&key) {
@@ -64,11 +67,13 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
             } else if let Some(compact) = self.get_compact_leaf(&key) {
                 Node::Compact(compact)
             } else {
-                TreeBuilder::empty_tree()[height].clone()
+                self.empty_tree()[height].clone()
             }
         };
         let node = get_node(height, key);
-            if key != TreeBuilder::<HASH_SIZE, H>::empty_tree()[height].hash() && node.hash() == TreeBuilder::<HASH_SIZE, H>::empty_tree()[height].hash() {
+        if key != self.empty_tree()[height].hash()
+            && node.hash() == self.empty_tree()[height].hash()
+        {
             panic!("node not found")
         }
         if let Node::Branch(branch) = node {
@@ -80,6 +85,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
             panic!("Should be a branch node")
         }
     }
+
     fn insert_branch(&mut self, branch: crate::node::Branch<HASH_SIZE, H>) {
         self.branches.insert(branch.hash(), branch);
     }
@@ -87,7 +93,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
         self.leaves.insert(leaf.hash(), leaf);
     }
     fn insert_compact_leaf(&mut self, compact_leaf: CompactLeaf<HASH_SIZE, H>) {
-        self.compact_leaves.insert(compact_leaf.hash(), compact_leaf);
+        self.compact_leaves
+            .insert(compact_leaf.hash(), compact_leaf);
     }
 
     fn update_root(&mut self, root: crate::node::Branch<HASH_SIZE, H>) {
@@ -105,12 +112,31 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
     fn delete_compact_leaf(&mut self, key: &[u8; HASH_SIZE]) {
         self.compact_leaves.remove(key);
     }
+
+    fn empty_tree(&self) -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]> {
+        self.empty_tree.clone()
+    }
 }
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> MemoryDb<HASH_SIZE, H> {
+    pub fn new() -> Self {
+        Self {
+            branches: HashMap::new(),
+            leaves: HashMap::new(),
+            compact_leaves: HashMap::new(),
+            empty_tree: TreeBuilder::<HASH_SIZE, H>::empty_tree(),
+            root_node: None,
+        }
+    }
     pub fn get_branches(&self) -> &HashMap<[u8; HASH_SIZE], Branch<HASH_SIZE, H>> {
         &self.branches
     }
     pub fn get_leaves(&self) -> &HashMap<[u8; HASH_SIZE], Leaf<HASH_SIZE, H>> {
         &self.leaves
+    }
+}
+
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Default for MemoryDb<HASH_SIZE, H> {
+    fn default() -> Self {
+        Self::new()
     }
 }
