@@ -43,15 +43,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
         self.root_node.clone()
     }
 
-    fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<crate::node::Branch<HASH_SIZE, H>> {
-        self.branches.get(key).cloned()
-    }
-    fn get_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<crate::node::Leaf<HASH_SIZE, H>> {
-        self.leaves.get(key).cloned()
-    }
-    fn get_compact_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<CompactLeaf<HASH_SIZE, H>> {
-        self.compact_leaves.get(key).cloned()
-    }
     fn get_children(
         &self,
         height: usize,
@@ -60,12 +51,12 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
         let get_node = |height: usize, key: [u8; HASH_SIZE]| {
             if key == self.empty_tree()[height].hash() {
                 self.empty_tree()[height].clone()
-            } else if let Some(node) = self.get_branch(&key) {
-                Node::Branch(node)
-            } else if let Some(leaf) = self.get_leaf(&key) {
-                Node::Leaf(leaf)
-            } else if let Some(compact) = self.get_compact_leaf(&key) {
-                Node::Compact(compact)
+            } else if let Some(node) = self.branches.get(&key) {
+                Node::Branch(node.clone())
+            } else if let Some(leaf) = self.leaves.get(&key) {
+                Node::Leaf(leaf.clone())
+            } else if let Some(compact) = self.compact_leaves.get(&key) {
+                Node::Compact(compact.clone())
             } else {
                 self.empty_tree()[height].clone()
             }

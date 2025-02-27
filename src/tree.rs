@@ -60,9 +60,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyTree<HASH_SIZE, 
 /// It provides the basic operations needed to store and retrieve nodes.
 pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>>;
-    fn get_branch(&self, key: &[u8; HASH_SIZE]) -> Option<Branch<HASH_SIZE, H>>;
-    fn get_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<Leaf<HASH_SIZE, H>>;
-    fn get_compact_leaf(&self, key: &[u8; HASH_SIZE]) -> Option<CompactLeaf<HASH_SIZE, H>>;
     fn get_children(
         &self,
         height: usize,
