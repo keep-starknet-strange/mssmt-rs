@@ -14,7 +14,7 @@ use std::{collections::HashMap, sync::Arc};
 use node::{Branch, CompactLeaf, Hasher, Leaf, Node};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, Bytes};
-use tree::{Db, EmptyTree, TreeSize};
+use tree::{Db, EmptyTree, ThreadSafe, TreeSize};
 use typenum::Unsigned;
 
 pub mod compact_tree;
@@ -36,7 +36,7 @@ pub struct MemoryDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
     root_node: Option<Branch<HASH_SIZE, H>>,
 }
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Db<HASH_SIZE, H>
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_SIZE, H>
     for MemoryDb<HASH_SIZE, H>
 {
     fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>> {

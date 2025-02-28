@@ -54,11 +54,21 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyTree<HASH_SIZE, 
     }
 }
 
+#[cfg(feature = "multi-thread")]
+pub trait ThreadSafe: Send + Sync {}
+#[cfg(feature = "multi-thread")]
+impl<T: Send + Sync> ThreadSafe for T {}
+
+#[cfg(not(feature = "multi-thread"))]
+pub trait ThreadSafe {}
+#[cfg(not(feature = "multi-thread"))]
+impl<T> ThreadSafe for T {}
+
 /// Store for the tree nodes
 ///
 /// This trait must be implemented by any storage backend used with the tree.
 /// It provides the basic operations needed to store and retrieve nodes.
-pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
     fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>>;
     fn get_children(
         &self,

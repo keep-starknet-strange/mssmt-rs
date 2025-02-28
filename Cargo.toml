@@ -3,6 +3,10 @@ name = "merkle-sum-sparse-tree"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["multi-thread"]
+multi-thread = []
+
 [dependencies]
 serde = {version = "1.0.217", features = ["derive", "rc"] }
 sha2 = "0.10.8"

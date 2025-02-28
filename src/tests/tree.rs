@@ -4,7 +4,7 @@ use hex_literal::hex;
 use sha2::Sha256;
 
 use crate::{
-    compact_tree::CompactMSSMT, node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node}, tree::{Db, EmptyTree, MSSMT}, MemoryDb
+    compact_tree::CompactMSSMT, node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node}, tree::{Db, EmptyTree, ThreadSafe, MSSMT}, MemoryDb
 };
 
 #[test]
@@ -96,7 +96,7 @@ fn test_history_independant() {
 fn test_insertion() {
     // tests that inserting leaves, branches and compacted leaves
     // in an orderly manner results in the expected tree structure in the database.
-    fn test_children<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + Default>(
+    fn test_children<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + Default + ThreadSafe>(
         leaves: Vec<Leaf<HASH_SIZE, H>>,
         check_branches: Vec<Vec<Branch<HASH_SIZE, H>>>,
         leaf_level: usize,
