@@ -10,8 +10,8 @@ pub(crate) type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
 /// * `KVStore` - Key value store for nodes.
 /// * `HASH_SIZE` - size of the hash digest in bytes.
 /// * `H` - Hasher that will be used to hash nodes.
-pub struct MSSMT<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
-    db: KVStore,
+pub struct MSSMT<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+    db: Box<dyn Db<HASH_SIZE, H>>,
     _phantom: PhantomData<H>,
 }
 
@@ -82,11 +82,11 @@ pub(crate) fn bit_index(index: usize, key: &[u8]) -> u8 {
     (key[index / 8] >> (index % 8)) & 1
 }
 
-impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
-    MSSMT<KVStore, HASH_SIZE, H>
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
+    MSSMT<HASH_SIZE, H>
 {
     /// Creates a new mssmt. This will build an empty tree which will involve a lot of hashing.
-    pub fn new(mut db: KVStore) -> Self {
+    pub fn new(mut db: Box<dyn Db<HASH_SIZE, H>>) -> Self {
         let Node::Branch(branch) = db.empty_tree().as_ref()[0].clone() else {
             panic!("Root should be a branch")
         };
@@ -96,23 +96,8 @@ impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + C
             _phantom: PhantomData,
         }
     }
-    pub fn db(&self) -> &KVStore {
-        &self.db
-    }
-
-    /// Creates a new mssmt from an already built empty tree. No hashing involved.
-    pub fn new_with_tree(
-        mut db: KVStore,
-        empty_tree: [Node<HASH_SIZE, H>; TreeSize::USIZE],
-    ) -> Self {
-        let Node::Branch(branch) = empty_tree[0].clone() else {
-            panic!("Root should be a branch")
-        };
-        db.update_root(branch);
-        Self {
-            db,
-            _phantom: PhantomData,
-        }
+    pub fn db(&self) -> &dyn Db<HASH_SIZE, H> {
+        self.db.as_ref()
     }
 
     /// Max height of the tree

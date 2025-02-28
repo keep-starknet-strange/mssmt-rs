@@ -9,7 +9,7 @@ use crate::{
 
 #[test]
 fn test_empty_tree() {
-    let tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
+    let tree = MSSMT::<32, Sha256>::new(Box::new(MemoryDb::default()));
     assert_eq!(
         tree.root().hash(),
         hex!("b1e8e8f2dc3b266452988cfe169aa73be25405eeead02ab5dd6b3c6fd0ca8d67")
@@ -26,8 +26,8 @@ fn test_leaves_insertion() {
     let key4=  [177_u8, 231, 231, 200, 71, 83, 63, 150, 221, 247, 213, 231, 188, 27, 190, 148, 112, 218, 129, 131, 93, 195, 197, 44, 143, 203, 191, 17, 154, 100, 103, 100];
     assert_eq!(leaf4.hash(), [57, 69, 34, 179, 59, 126, 69, 176, 23, 250, 43, 62, 92, 40, 140, 134, 218, 152, 51, 247, 13, 206, 24, 141, 226, 105, 72, 134, 21, 60, 103, 103]);
 
-    let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
-    let mut compact_tree = CompactMSSMT::<_, 32, Sha256>::new(MemoryDb::default());
+    let mut tree = MSSMT::<32, Sha256>::new(Box::new(MemoryDb::default()));
+    let mut compact_tree = CompactMSSMT::<32, Sha256>::new(Box::new(MemoryDb::default()));
 
     tree.insert([1; 32], leaf1.clone());
     compact_tree.insert([1; 32], leaf1.clone());
@@ -63,7 +63,7 @@ fn test_leaves_insertion() {
     );
     tree.insert(key4, leaf4.clone());
     compact_tree.insert(key4, leaf4.clone());
-    
+
     assert_eq!(tree.root().hash(), compact_tree.root().hash());
     
 }
@@ -74,8 +74,8 @@ fn test_history_independant() {
     let leaf2 = Leaf::new([2; 32].to_vec(), 2);
     let leaf3 = Leaf::new([3; 32].to_vec(), 3);
 
-    let mut tree = MSSMT::<_, 32, Sha256>::new(MemoryDb::default());
-    let mut compact_tree = CompactMSSMT::<_, 32, Sha256>::new(MemoryDb::default());
+    let mut tree = MSSMT::<32, Sha256>::new(Box::new(MemoryDb::default()));
+    let mut compact_tree = CompactMSSMT::<32, Sha256>::new(Box::new(MemoryDb::default()));
     tree.insert([1; 32], leaf1.clone());
     tree.insert([3; 32], leaf3.clone());
     tree.insert([2; 32], leaf2.clone());

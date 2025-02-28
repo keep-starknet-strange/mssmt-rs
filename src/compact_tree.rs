@@ -7,34 +7,28 @@ use crate::{
 };
 
 pub struct CompactMSSMT<
-    KVStore: Db<HASH_SIZE, H>,
     const HASH_SIZE: usize,
     H: Hasher<HASH_SIZE> + Clone,
 > {
-    db: KVStore,
+    db: Box<dyn Db<HASH_SIZE, H>>,
     _phantom: PhantomData<H>,
 }
 
-impl<KVStore: Db<HASH_SIZE, H>, const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
-    CompactMSSMT<KVStore, HASH_SIZE, H>
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
+    CompactMSSMT<HASH_SIZE, H>
 {
-    pub fn new(db: KVStore) -> Self {
+    pub fn new(db: Box<dyn Db<HASH_SIZE, H>>) -> Self {
         Self {
             db,
             _phantom: PhantomData,
         }
     }
-    pub fn new_with_tree(db: KVStore) -> Self {
-        Self {
-            db,
-            _phantom: PhantomData,
-        }
-    }
+    
     pub fn max_height() -> usize {
         TreeSize::USIZE
     }
-    pub fn db(&self) -> &KVStore {
-        &self.db
+    pub fn db(&self) -> &dyn Db<HASH_SIZE, H> {
+        self.db.as_ref()
     }
     pub fn root(&self) -> Branch<HASH_SIZE, H> {
         self.db.get_root_node().unwrap_or_else(|| {
