@@ -1,20 +1,74 @@
 use std::{fmt::Display, marker::PhantomData};
 
-use super::{Hasher, Sum};
+use super::{EmptyLeaf, Hasher, Sum};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Leaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+    NonEmpty(NonEmptyLeaf<HASH_SIZE, H>),
+    Empty(EmptyLeaf<HASH_SIZE, H>),
+}
+
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
+    pub fn new(value: Vec<u8>, sum: Sum) -> Self {
+        if value.is_empty() {
+            Self::Empty(EmptyLeaf::new())
+        } else {
+            Self::NonEmpty(NonEmptyLeaf::new(value, sum))
+        }
+    }
+
+    /// Creates a new leaf with a pre-computed hash.
+    ///
+    /// # Safety
+    ///
+    /// The provided hash must be correctly computed from the value and sum.
+    /// If an incorrect hash is provided, the tree's integrity will be compromised.
+    pub unsafe fn new_with_hash(value: Vec<u8>, sum: Sum, node_hash: [u8; HASH_SIZE]) -> Self {
+        Self::NonEmpty(NonEmptyLeaf::new_with_hash(value, sum, node_hash))
+    }
+
+    pub fn hash(&self) -> [u8; HASH_SIZE] {
+        match self {
+            Self::NonEmpty(leaf) => leaf.hash(),
+            Self::Empty(leaf) => leaf.hash(),
+        }
+    }
+    pub fn sum(&self) -> Sum {
+        match self {
+            Self::NonEmpty(leaf) => leaf.sum(),
+            Self::Empty(leaf) => leaf.sum(),
+        }
+    }
+    pub fn value(&self) -> &[u8] {
+        match self {
+            Self::NonEmpty(leaf) => leaf.value(),
+            Self::Empty(_) => &[],
+        }
+    }
+}
+
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Leaf<HASH_SIZE, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NonEmpty(leaf) => write!(f, "{}", leaf),
+            Self::Empty(leaf) => write!(f, "{}", leaf),
+        }
+    }
+}
 
 /// A Leaf is a node that has no children and simply hold information.
 /// They are the last row of the tree.
 /// Each leaf contains a `value`
 /// represented as bytes and a `sum` which is an integer.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Leaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
+pub struct NonEmptyLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     value: Vec<u8>,
     sum: Sum,
     node_hash: [u8; HASH_SIZE],
     _phantom: PhantomData<H>,
 }
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> NonEmptyLeaf<HASH_SIZE, H> {
     /// Creates a new [`Leaf`]. This function performs a hash.
     pub fn new(value: Vec<u8>, sum: Sum) -> Self {
         let node_hash = H::hash(
@@ -30,9 +84,12 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
         }
     }
 
+    /// Creates a new leaf with a pre-computed hash.
+    ///
     /// # Safety
     ///
-    /// The node hash won't be recomputed so if the provided hash is incorrect the whole tree will be incorrect
+    /// The provided hash must be correctly computed from the value and sum.
+    /// If an incorrect hash is provided, the tree's integrity will be compromised.
     pub unsafe fn new_with_hash(value: Vec<u8>, sum: Sum, node_hash: [u8; HASH_SIZE]) -> Self {
         Self {
             value,
@@ -53,13 +110,14 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
         &self.value
     }
 }
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Leaf<HASH_SIZE, H> {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for NonEmptyLeaf<HASH_SIZE, H> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Leaf {{ sum: {}, hash: {} }}",
+            "Leaf {{ sum: {}, hash: {}, value: {:?} }}",
             self.sum(),
-            hex::encode(self.hash().as_slice())
+            hex::encode(self.hash().as_slice()),
+            self.value()
         )
     }
 }
@@ -91,7 +149,7 @@ mod test {
 
     #[test]
     fn test_leaf_display() {
-        assert_eq!(format!("{}", super::Leaf::<32, Sha256>::new(vec![1, 2, 3], 1)), "Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d }");
+        assert_eq!(format!("{}", super::Leaf::<32, Sha256>::new(vec![1, 2, 3], 1)), "Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, value: [1, 2, 3] }");
     }
 
     #[test]

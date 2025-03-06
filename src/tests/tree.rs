@@ -4,7 +4,7 @@ use hex_literal::hex;
 use sha2::Sha256;
 
 use crate::{
-    node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node},
+    node::{Branch, CompactLeaf, Hasher, Leaf, Node},
     tree::CompactMSSMT,
     tree::MSSMT,
     Db, EmptyTree, MemoryDb, ThreadSafe,
@@ -148,11 +148,10 @@ fn test_insertion() {
     let l2 = Leaf::new([2; 32].to_vec(), 2);
     let l3 = Leaf::<32, Sha256>::new([3; 32].to_vec(), 3);
     let l4 = Leaf::new([4; 32].to_vec(), 4);
-    let el = EmptyLeaf::new();
     let branch_l1_l2 = Branch::new(Node::Leaf(l1.clone()), Node::Leaf(l2.clone()));
     let branch_l3_l4 = Branch::new(Node::Leaf(l3.clone()), Node::Leaf(l4.clone()));
-    let branch_l1_el = Branch::new(Node::Leaf(l1.clone()), Node::Empty(el.clone()));
-    let branch_el_l1 = Branch::new(Node::Empty(el), Node::Leaf(l1.clone()));
+    let branch_l1_el = Branch::new(Node::Leaf(l1.clone()), Node::new_empty_leaf());
+    let branch_el_l1 = Branch::new(Node::new_empty_leaf(), Node::Leaf(l1.clone()));
     let k1 = [1_u8; 32];
     let k2 = [2_u8; 32];
     let k3 = [3_u8; 32];

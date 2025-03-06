@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::{fmt::Display, marker::PhantomData};
 
-use super::empty::EmptyLeaf;
 use super::Node;
 use super::{Hasher, Sum};
 
@@ -83,7 +82,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> 
 
     /// Creates a new branch with 2 empty leaves.
     pub fn empty_branch() -> Self {
-        let leaf = Node::<HASH_SIZE, H>::Empty(EmptyLeaf::<HASH_SIZE, H>::new());
+        let leaf = Node::new_empty_leaf();
         Self::new(leaf.clone(), leaf)
     }
 

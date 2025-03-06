@@ -1,12 +1,14 @@
 //! Core Merkle Sum Sparse Merkle Tree implementation
 
-use std::{borrow::Borrow, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
     db::Db,
     node::{Branch, Hasher, Leaf, Node},
     TreeError,
 };
+
+use super::walk_up;
 
 /// Merkle sum sparse merkle tree.
 /// * `KVStore` - Key value store for nodes.
@@ -54,7 +56,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
             Some(branch) => Ok(branch),
             None => {
                 let Node::Branch(branch) = self.db.empty_tree().as_ref()[0].clone() else {
-                    return Err(TreeError::NodeNotBranch);
+                    return Err(TreeError::ExpectedBranch);
                 };
                 Ok(branch)
             }
@@ -81,50 +83,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
         }
         match current {
             Node::Leaf(leaf) => Ok(Node::Leaf(leaf)),
-            Node::Branch(_) => Err(TreeError::NodeNotLeaf),
-            Node::Empty(empty) => Ok(Node::Empty(empty)),
-            Node::Compact(_) => Err(TreeError::NodeNotCompactLeaf),
+            Node::Branch(_) => Err(TreeError::ExpectedLeaf),
+            Node::Compact(_) => Err(TreeError::ExpectedLeaf),
             Node::Computed(_) => Err(TreeError::NodeNotFound),
-        }
-    }
-
-    /// Walk up the tree from the node to the root node.
-    /// * `key` - key of the node we want to reach.
-    /// * `start` - starting leaf.
-    /// * `siblings` - All the sibling nodes on the path (from the leaf to the target node).
-    /// * `for_each` - Closure that is executed at each step of the traversal of the tree.
-    ///     * `height: usize` - current height in the tree
-    ///     * `current: &Node<HASH_SIZE, H>` - current node on the way to the asked node
-    ///     * `sibling: &Node<HASH_SIZE, H>` - sibling node of the current node on the way to the asked node
-    ///     * `parent: &Node<HASH_SIZE, H>` - parent node of the current node on the way to the asked node
-    pub fn walk_up(
-        &self,
-        key: [u8; HASH_SIZE],
-        start: Leaf<HASH_SIZE, H>,
-        siblings: Vec<Arc<Node<HASH_SIZE, H>>>,
-        mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>),
-    ) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
-        let mut current = Arc::new(Node::Leaf(start));
-        for i in (0..Self::max_height()).rev() {
-            let sibling = siblings[Self::max_height() - 1 - i].clone();
-            let parent = if bit_index(i, &key) == 0 {
-                Node::Branch(Branch::new_with_arc_children(
-                    current.clone(),
-                    sibling.clone(),
-                ))
-            } else {
-                Node::Branch(Branch::new_with_arc_children(
-                    sibling.clone(),
-                    current.clone(),
-                ))
-            };
-            for_each(i, &current, &sibling, &parent);
-            current = Arc::new(parent);
-        }
-        if let Node::Branch(current) = current.borrow() {
-            Ok(current.clone())
-        } else {
-            Err(TreeError::NodeNotBranch)
         }
     }
 
@@ -146,7 +107,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
 
         let mut branches_delete = Vec::new();
         let mut branches_insertion = Vec::new();
-        let root = self.walk_up(
+        let root = walk_up(
             key,
             leaf.clone(),
             siblings,
@@ -173,12 +134,24 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
         self.db.insert_leaf(leaf)?;
         self.db.update_root(root)
     }
+
+    pub fn merkle_proof(
+        &self,
+        key: [u8; HASH_SIZE],
+    ) -> Result<Vec<Node<HASH_SIZE, H>>, TreeError<DbError>> {
+        let mut proof = Vec::with_capacity(Self::max_height());
+        self.walk_down(key, |_, _next, sibling, _| {
+            proof.push(sibling);
+        })?;
+        proof.reverse();
+        Ok(proof)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::MSSMT;
-    use crate::MemoryDb;
+    use crate::{tree::verify_merkle_proof, Leaf, MemoryDb, TreeError};
     use sha2::Sha256;
 
     #[test]
@@ -188,6 +161,33 @@ mod test {
         assert_eq!(
             mssmt.root().unwrap().hash(),
             mssmt.db().empty_tree()[0].hash()
+        );
+    }
+
+    #[test]
+    fn test_mssmt_merkle_proof() {
+        let db = Box::new(MemoryDb::<32, Sha256>::new());
+        let mut mssmt = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let value = vec![0; 32];
+        let leaf = Leaf::new(value, 1);
+        mssmt.insert([0; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof([0; 32]).unwrap();
+        let root = mssmt.root().unwrap();
+        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap();
+    }
+
+    #[test]
+    fn test_mssmt_merkle_proof_invalid() {
+        let db = Box::new(MemoryDb::<32, Sha256>::new());
+        let mut mssmt = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let value = vec![0; 32];
+        let leaf = Leaf::new(value, 1);
+        mssmt.insert([0; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof([1; 32]).unwrap();
+        let root = mssmt.root().unwrap();
+        assert_eq!(
+            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap_err(),
+            TreeError::InvalidMerkleProof
         );
     }
 }

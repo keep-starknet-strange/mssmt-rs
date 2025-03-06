@@ -3,7 +3,7 @@
 use std::{cell::LazyCell, marker::PhantomData, sync::Arc};
 use typenum::{Prod, Sum, Unsigned, U1, U8};
 
-use crate::node::{EmptyLeaf, Hasher, Node};
+use crate::node::{Hasher, Node};
 
 /// Define the empty tree array size as (HASH_SIZE * 8) + 1
 pub type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
@@ -26,7 +26,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyTree<HASH_SIZE, 
     fn build_tree() -> [Node<HASH_SIZE, H>; TreeSize::USIZE] {
         let max_height = HASH_SIZE * 8;
         let mut empty_tree = Vec::with_capacity(max_height + 1);
-        let empty_leaf = Node::<HASH_SIZE, H>::Empty(EmptyLeaf::new());
+        let empty_leaf = Node::<HASH_SIZE, H>::new_empty_leaf();
         empty_tree.push(empty_leaf);
 
         for i in 1..=max_height {
