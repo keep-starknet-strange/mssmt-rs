@@ -2,13 +2,16 @@
 name = "merkle-sum-sparse-tree"
 version = "0.1.0"
 edition = "2021"
-[profile.release]
-debug = true
+
+[features]
+default = ["multi-thread"]
+multi-thread = []
+
 [dependencies]
-generic-array = "1.2.0"
+hex = "0.4.3"
 sha2 = "0.10.8"
 typenum = "1.17.0"
 
 [dev-dependencies]
 hex-literal = "0.4.1"
-hex = "0.4.3"
+
