@@ -1,51 +1,87 @@
+//! A compact representation of a Merkle Sum Sparse Merkle Tree (MS-SMT).
+//! 
+//! This implementation optimizes storage by compacting subtrees that contain only a single leaf.
+//! Instead of storing all intermediate branch nodes, it stores just the leaf and its path information.
+//! This significantly reduces the storage requirements while maintaining the same cryptographic properties.
+
 use std::marker::PhantomData;
 use typenum::Unsigned;
 
 use crate::{
-    node::{Branch, CompactLeaf, Hasher, Leaf, Node},
-    tree::{bit_index, Db, TreeSize},
+    node::{Branch, CompactLeaf, Hasher, Leaf, Node}, tree::bit_index, Db, TreeError, TreeSize
 };
 
-pub struct CompactMSSMT<
-    const HASH_SIZE: usize,
-    H: Hasher<HASH_SIZE> + Clone,
-> {
-    db: Box<dyn Db<HASH_SIZE, H>>,
+/// A compact Merkle Sum Sparse Merkle Tree implementation.
+///
+/// This tree structure maintains the same cryptographic properties as a regular MS-SMT
+/// but uses an optimized storage format that compacts single-leaf subtrees.
+///
+/// # Type Parameters
+///
+/// * `HASH_SIZE`: The size of the hash output in bytes
+/// * `H`: The hash function implementation that implements the [`Hasher`] trait
+pub struct CompactMSSMT<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> {
+    /// The database backend for storing tree nodes
+    db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>,
+    /// PhantomData for the hash function type
     _phantom: PhantomData<H>,
 }
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
-    CompactMSSMT<HASH_SIZE, H>
-{
-    pub fn new(db: Box<dyn Db<HASH_SIZE, H>>) -> Self {
-        Self {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> CompactMSSMT<HASH_SIZE, H, DbError> {
+    /// Creates a new empty compact MS-SMT with the given database backend.
+    pub fn new(db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>) -> Result<Self, TreeError<DbError>> {
+        Ok(Self {
             db,
             _phantom: PhantomData,
-        }
+        })
     }
-    
+
+    /// Returns the maximum height of the tree.
     pub fn max_height() -> usize {
         TreeSize::USIZE
     }
-    pub fn db(&self) -> &dyn Db<HASH_SIZE, H> {
+
+    /// Returns a reference to the underlying database.
+    pub fn db(&self) -> &dyn Db<HASH_SIZE, H, DbError = DbError> {
         self.db.as_ref()
     }
-    pub fn root(&self) -> Branch<HASH_SIZE, H> {
-        self.db.get_root_node().unwrap_or_else(|| {
+
+    /// Returns the root node of the tree.
+    ///
+    /// If the tree is empty, returns the default empty root node.
+    pub fn root(&self) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
+        if let Some(branch) = self.db.get_root_node() {
+            Ok(branch)
+        } else {
             let Node::Branch(branch) = self.db.empty_tree().as_ref()[0].clone() else {
-                panic!("Root should be a branch")
+                return Err(TreeError::NodeNotBranch);
             };
-            branch
-        })
+            Ok(branch)
+        }
     }
+
+    /// Walks down the tree following the given path, calling the provided function at each level.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to follow, represented as a byte array
+    /// * `for_each` - A closure called at each level with:
+    ///   * The current height
+    ///   * The next node in the path
+    ///   * The sibling node
+    ///   * The current node
+    ///
+    /// # Returns
+    ///
+    /// Returns the leaf node found at the end of the path
     pub fn walk_down(
         &self,
         path: &[u8; HASH_SIZE],
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>),
-    ) -> Leaf<HASH_SIZE, H> {
-        let mut current = Node::Branch(self.db.get_root_node().unwrap());
+    ) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
+        let mut current = Node::Branch(self.db.get_root_node().ok_or(TreeError::NodeNotFound)?);
         for i in 0..Self::max_height() {
-            let (left, right) = self.db.get_children(i, current.hash());
+            let (left, right) = self.db.get_children(i, current.hash())?;
             let (mut next, mut sibling) = Self::step_order(i, path, left, right);
             match next {
                 Node::Compact(compact) => {
@@ -66,7 +102,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
                             // continue walking down.
                             let branch = match &current {
                                 Node::Branch(b) => b,
-                                _ => panic!("expected branch node"),
+                                _ => return Err(TreeError::NodeNotBranch),
                             };
                             let (n, s) = Self::step_order(
                                 j + 1,
@@ -79,9 +115,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
                         }
                     }
                     let Node::Leaf(leaf) = current else {
-                        panic!("expected leaf found branch");
+                        return Err(TreeError::NodeNotLeaf);
                     };
-                    return leaf;
+                    return Ok(leaf);
                 }
                 _ => {
                     for_each(i, &next, &sibling, &current);
@@ -90,14 +126,24 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
             }
         }
         let Node::Leaf(leaf) = current else {
-            panic!("expected leaf found branch");
+            return Err(TreeError::NodeNotLeaf);
         };
-        leaf
+        Ok(leaf)
     }
 
-    /// merge is a helper function to create the common subtree from two leafs lying
-    /// on the same (partial) path. The resulting subtree contains branch nodes from
-    /// diverging bit of the passed key's.
+    /// Creates a common subtree from two leaves that share a partial path.
+    ///
+    /// # Arguments
+    ///
+    /// * `height` - The current height in the tree
+    /// * `key1` - The key of the first leaf
+    /// * `leaf1` - The first leaf node
+    /// * `key2` - The key of the second leaf  
+    /// * `leaf2` - The second leaf node
+    ///
+    /// # Returns
+    ///
+    /// Returns a branch node that is the root of the merged subtree
     pub fn merge(
         &mut self,
         height: usize,
@@ -105,7 +151,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
         leaf1: Leaf<HASH_SIZE, H>,
         key2: [u8; HASH_SIZE],
         leaf2: Leaf<HASH_SIZE, H>,
-    ) -> Branch<HASH_SIZE, H> {
+    ) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
         // Find the common prefix first
         let mut i = 0;
         while i < Self::max_height() && bit_index(i, &key1) == bit_index(i, &key2) {
@@ -114,17 +160,15 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
 
         // Now we create two compacted leaves and insert them as children of
         // a newly created branch
-        let node1 = CompactLeaf::new_compact_leaf(
-            i + 1,
-            key1,
-            leaf1,
-        );
-        let node2 = CompactLeaf::new_compact_leaf(i + 1, key2, leaf2);
-        self.db.insert_compact_leaf(node1.clone());
-        self.db.insert_compact_leaf(node2.clone());
+        let node1 = CompactLeaf::new(i + 1, key1, leaf1.clone());
+        let node2 = CompactLeaf::new(i + 1, key2, leaf2.clone());
+        self.db.insert_leaf(leaf1)?;
+        self.db.insert_leaf(leaf2)?;
+        self.db.insert_compact_leaf(node1.clone())?;
+        self.db.insert_compact_leaf(node2.clone())?;
         let (left, right) = Self::step_order(i, &key1, Node::Compact(node1), Node::Compact(node2));
         let mut parent = Branch::new(left, right);
-        self.db.insert_branch(parent.clone());
+        self.db.insert_branch(parent.clone())?;
 
         // From here we'll walk up to the current level and create branches
         // along the way. Optionally we could compact these branches too.
@@ -136,31 +180,33 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
                 self.db.empty_tree()[i + 1].clone(),
             );
             parent = Branch::new(left, right);
-            self.db.insert_branch(parent.clone());
+            self.db.insert_branch(parent.clone())?;
         }
 
-        parent
+        Ok(parent)
     }
 
-    /// insert inserts the key at the current height either by adding a new compacted
-    /// leaf, merging an existing leaf with the passed leaf in a new subtree or by
-    /// recursing down further.
-    pub(crate) fn insert_leaf(
+    /// Inserts a leaf at the given height in the tree.
+    ///
+    /// This function handles three cases:
+    /// 1. Inserting into an empty subtree (creates a new compact leaf)
+    /// 2. Replacing an existing leaf at the same key
+    /// 3. Merging with an existing leaf at a different key (creates a new subtree)
+    fn insert_leaf(
         &mut self,
         key: &[u8; HASH_SIZE],
         height: usize,
-        root: &Branch<HASH_SIZE, H>,
+        root_hash: &[u8; HASH_SIZE],
         leaf: Leaf<HASH_SIZE, H>,
-    ) -> Branch<HASH_SIZE, H> {
-        let (left, right) = self.db.get_children(height, root.hash());
-
-        let is_left =  bit_index(height, key) == 0;
+    ) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
+        let (left, right) = self.db.get_children(height, *root_hash)?;
+        let is_left = bit_index(height, key) == 0;
         let (next, sibling) = if is_left {
             (left, right)
         } else {
             (right, left)
         };
-        
+
         let next_height = height + 1;
 
         let new_node = match next {
@@ -169,24 +215,26 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
                     // This is an empty subtree, so we can just walk up
                     // from the leaf to recreate the node key for this
                     // subtree then replace it with a compacted leaf.
-                    let new_leaf = CompactLeaf::new_compact_leaf(next_height, *key, leaf);
-                    self.db.insert_compact_leaf(new_leaf.clone());
+                    let new_leaf = CompactLeaf::new(next_height, *key, leaf.clone());
+                    self.db.insert_leaf(leaf)?;
+                    self.db.insert_compact_leaf(new_leaf.clone())?;
                     Node::Compact(new_leaf)
                 } else {
                     // Not an empty subtree, recurse down the tree to find
                     // the insertion point for the leaf.
-                    Node::Branch(self.insert_leaf(key, next_height, &node, leaf))
+                    Node::Branch(self.insert_leaf(key, next_height, &node.hash(), leaf)?)
                 }
             }
             Node::Compact(node) => {
                 // First delete the old leaf.
-                self.db.delete_compact_leaf(&node.hash());
+                self.db.delete_compact_leaf(&node.hash())?;
 
                 if *key == *node.key() {
                     // Replace of an existing leaf.
                     // TODO: change to handle delete
-                    let new_leaf = CompactLeaf::new_compact_leaf(next_height, *key, leaf);
-                    self.db.insert_compact_leaf(new_leaf.clone());
+                    let new_leaf = CompactLeaf::new(next_height, *key, leaf.clone());
+                    self.db.insert_leaf(leaf)?;
+                    self.db.insert_compact_leaf(new_leaf.clone())?;
                     Node::Compact(new_leaf)
                 } else {
                     // Merge the two leaves into a subtree.
@@ -196,17 +244,31 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
                         leaf,
                         *node.key(),
                         node.leaf().clone(),
-                    ))
+                    )?)
                 }
             }
-            _ => panic!("unexpected node type"),
+            Node::Computed(node) => {
+                if node.hash() == self.db.empty_tree()[next_height].hash() {
+                    // This is an empty subtree, so we can just walk up
+                    // from the leaf to recreate the node key for this
+                    // subtree then replace it with a compacted leaf.
+                    let new_leaf = CompactLeaf::new(next_height, *key, leaf.clone());
+                    self.db.insert_leaf(leaf)?;
+                    self.db.insert_compact_leaf(new_leaf.clone())?;
+                    Node::Compact(new_leaf)
+                } else {
+                    // Not an empty subtree, recurse down the tree to find
+                    // the insertion point for the leaf.
+                    Node::Branch(self.insert_leaf(key, next_height, &node.hash(), leaf)?)
+                }
+            }
+            _ => return Err(TreeError::NodeNotBranch),
         };
 
         // Delete the old root if not empty
-        if root.hash() != self.db.empty_tree()[height].hash() {
-            self.db.delete_branch(&root.hash());
+        if *root_hash != self.db.empty_tree()[height].hash() {
+            self.db.delete_branch(root_hash)?;
         }
-
         // Create the new root
         let branch = if is_left {
             Branch::new(new_node, sibling)
@@ -216,36 +278,47 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
 
         // Only insert this new branch if not a default one
         if branch.hash() != self.db.empty_tree()[height].hash() {
-            self.db.insert_branch(branch.clone());
+            self.db.insert_branch(branch.clone())?;
         }
 
-        branch
+        Ok(branch)
     }
 
-    /// Insert inserts a leaf node at the given key within the MS-SMT.
-    pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) {
-        let root = self.db.get_root_node().unwrap_or_else(|| {
+    /// Inserts a leaf node at the given key within the MS-SMT.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key where the leaf should be inserted
+    /// * `leaf` - The leaf node to insert
+    ///
+    /// # Returns
+    ///
+    /// Returns an error if inserting the leaf would cause the tree's sum to overflow
+    pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Result<(), TreeError<DbError>> {
+        let root = if let Some(branch) = self.db.get_root_node() {
+            branch
+        } else {
             let Node::Branch(branch) = self.db.empty_tree()[0].clone() else {
-                panic!("expected branch node")
+                return Err(TreeError::NodeNotBranch);
             };
             branch
-        });
+        };
 
         // First we'll check if the sum of the root and new leaf will
         // overflow. If so, we'll return an error.
         let sum_root = root.sum();
         let sum_leaf = leaf.sum();
         if sum_root.checked_add(sum_leaf).is_none() {
-            panic!(
-                "compact tree leaf insert sum overflow, root: {}, leaf: {}",
-                sum_root, sum_leaf
-            );
+            return Err(TreeError::NodeNotFound); // TODO: Add a specific error for overflow
         }
 
-        let new_root = self.insert_leaf(&key, 0, &root, leaf);
-        self.db.update_root(new_root);
+        let new_root = self.insert_leaf(&key, 0, &root.hash(), leaf)?;
+        self.db.update_root(new_root)
     }
 
+    /// Helper function to order nodes based on a key bit at the given height.
+    ///
+    /// Returns the nodes in (next, sibling) order based on whether the key bit is 0 or 1.
     #[inline]
     fn step_order(
         height: usize,

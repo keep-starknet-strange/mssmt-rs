@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::tree::{bit_index, EmptyTree};
+use crate::{tree::bit_index, EmptyTree};
 
 impl Hasher<32> for Sha256 {
     fn hash(data: &[u8]) -> [u8; 32] {
@@ -31,7 +31,7 @@ pub trait Hasher<const HASH_SIZE: usize> {
 /// # Type Parameters
 /// * `HASH_SIZE` - The size of the hash digest in bytes
 /// * `H` - The hasher implementation used for this node
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     /// A leaf node containing a value and sum
     Leaf(Leaf<HASH_SIZE, H>),
@@ -44,20 +44,28 @@ pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     /// A computed node
     Computed(ComputedNode<HASH_SIZE>),
 }
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Debug for Node<HASH_SIZE, H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Leaf(leaf) => write!(f, "Leaf({})", leaf.sum()),
+            Self::Branch(branch) => write!(f, "Branch({})", branch.sum()),
+            Self::Compact(compact) => write!(f, "Compact({})", compact.sum()),
+            Self::Empty(empty) => write!(f, "Empty({})", empty.sum()),
+            Self::Computed(computed) => write!(f, "Computed({})", computed.sum()),
+        }
+    }
+}
 
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComputedNode<const HASH_SIZE: usize> {
     #[serde_as(as = "Bytes")]
     node_hash: [u8; HASH_SIZE],
-    sum: Sum
+    sum: Sum,
 }
 impl<const HASH_SIZE: usize> ComputedNode<HASH_SIZE> {
     pub fn new(node_hash: [u8; HASH_SIZE], sum: Sum) -> Self {
-        Self {
-            node_hash,
-            sum,
-        }
+        Self { node_hash, sum }
     }
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
@@ -368,7 +376,7 @@ pub struct CompactLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
 }
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE, H> {
-    pub fn new_compact_leaf(height: usize, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Self {
+    pub fn new(height: usize, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Self {
         let mut current = Node::Leaf(leaf.clone());
         let empty_tree = EmptyTree::<HASH_SIZE, H>::empty_tree();
 
@@ -382,6 +390,20 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE
 
         Self {
             node_hash: current.hash(),
+            leaf,
+            key,
+        }
+    }
+    /// # Safety
+    ///
+    /// The node hash won't be recomputed so if the provided hash is incorrect the whole tree will be incorrect
+    pub unsafe fn new_with_hash(
+        node_hash: [u8; HASH_SIZE],
+        leaf: Leaf<HASH_SIZE, H>,
+        key: [u8; HASH_SIZE],
+    ) -> Self {
+        Self {
+            node_hash,
             leaf,
             key,
         }

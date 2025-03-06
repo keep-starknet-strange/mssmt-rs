@@ -1,90 +1,23 @@
-use std::{borrow::Borrow, cell::LazyCell, marker::PhantomData, sync::Arc};
-use typenum::{Prod, Sum, Unsigned, U1, U8};
+//! Core Merkle Sum Sparse Merkle Tree implementation
 
-use crate::node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node};
+use std::{borrow::Borrow, marker::PhantomData, sync::Arc};
 
-/// Define the empty tree array size as (HASH_SIZE * 8) + 1
-pub(crate) type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
+use crate::{
+    db::Db,
+    node::{Branch, Hasher, Leaf, Node},
+    TreeError,
+};
 
 /// Merkle sum sparse merkle tree.
 /// * `KVStore` - Key value store for nodes.
 /// * `HASH_SIZE` - size of the hash digest in bytes.
 /// * `H` - Hasher that will be used to hash nodes.
-pub struct MSSMT<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
-    db: Box<dyn Db<HASH_SIZE, H>>,
+pub struct MSSMT<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> {
+    db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>,
     _phantom: PhantomData<H>,
 }
 
-/// Helper struct to create an empty mssmt.
-pub struct EmptyTree<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>(PhantomData<H>);
-
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyTree<HASH_SIZE, H> {
-    #[allow(clippy::declare_interior_mutable_const)]
-    const EMPTY_TREE: LazyCell<Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>> =
-        LazyCell::new(|| Arc::new(Self::build_tree()));
-
-    /// Gets an empty mssmt.
-    pub fn empty_tree() -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]> {
-        #[allow(clippy::borrow_interior_mutable_const)]
-        Self::EMPTY_TREE.clone()
-    }
-
-    /// builds the empty tree
-    fn build_tree() -> [Node<HASH_SIZE, H>; TreeSize::USIZE] {
-        let max_height = HASH_SIZE * 8;
-        let mut empty_tree = Vec::with_capacity(max_height + 1);
-        let empty_leaf = Node::<HASH_SIZE, H>::Empty(EmptyLeaf::new());
-        empty_tree.push(empty_leaf);
-
-        for i in 1..=max_height {
-            empty_tree.push(Node::new_branch(
-                empty_tree[i - 1].clone(),
-                empty_tree[i - 1].clone(),
-            ));
-        }
-        empty_tree.reverse();
-
-        let Node::Branch(_branch) = &empty_tree[0] else {
-            panic!("Root should be a branch")
-        };
-
-        empty_tree
-            .try_into()
-            .unwrap_or_else(|_| panic!("Incorrect array size"))
-    }
-}
-
-#[cfg(feature = "multi-thread")]
-pub trait ThreadSafe: Send + Sync {}
-#[cfg(feature = "multi-thread")]
-impl<T: Send + Sync> ThreadSafe for T {}
-
-#[cfg(not(feature = "multi-thread"))]
-pub trait ThreadSafe {}
-#[cfg(not(feature = "multi-thread"))]
-impl<T> ThreadSafe for T {}
-
-/// Store for the tree nodes
-///
-/// This trait must be implemented by any storage backend used with the tree.
-/// It provides the basic operations needed to store and retrieve nodes.
-pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
-    fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>>;
-    fn get_children(
-        &self,
-        height: usize,
-        key: [u8; HASH_SIZE],
-    ) -> (Node<HASH_SIZE, H>, Node<HASH_SIZE, H>);
-    fn insert_leaf(&mut self, leaf: Leaf<HASH_SIZE, H>);
-    fn insert_branch(&mut self, branch: Branch<HASH_SIZE, H>);
-    fn insert_compact_leaf(&mut self, compact_leaf: CompactLeaf<HASH_SIZE, H>);
-    fn empty_tree(&self) -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>;
-    fn update_root(&mut self, root: Branch<HASH_SIZE, H>);
-    fn delete_branch(&mut self, key: &[u8; HASH_SIZE]);
-    fn delete_leaf(&mut self, key: &[u8; HASH_SIZE]);
-    fn delete_compact_leaf(&mut self, key: &[u8; HASH_SIZE]);
-}
-
+/// Get the bit at the given index in the key.
 pub(crate) fn bit_index(index: usize, key: &[u8]) -> u8 {
     // `index as usize / 8` to get the index of the interesting byte
     // `index % 8` to get the interesting bit index in the previously selected byte
@@ -92,21 +25,19 @@ pub(crate) fn bit_index(index: usize, key: &[u8]) -> u8 {
     (key[index / 8] >> (index % 8)) & 1
 }
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
-    MSSMT<HASH_SIZE, H>
-{
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_SIZE, H, DbError> {
     /// Creates a new mssmt. This will build an empty tree which will involve a lot of hashing.
-    pub fn new(mut db: Box<dyn Db<HASH_SIZE, H>>) -> Self {
+    pub fn new(mut db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>) -> Result<Self, TreeError<DbError>> {
         let Node::Branch(branch) = db.empty_tree().as_ref()[0].clone() else {
-            panic!("Root should be a branch")
+            return Err(TreeError::NodeNotBranch);
         };
-        db.update_root(branch);
-        Self {
+        db.update_root(branch)?;
+        Ok(Self {
             db,
             _phantom: PhantomData,
-        }
+        })
     }
-    pub fn db(&self) -> &dyn Db<HASH_SIZE, H> {
+    pub fn db(&self) -> &dyn Db<HASH_SIZE, H, DbError = DbError> {
         self.db.as_ref()
     }
 
@@ -116,32 +47,34 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
     }
 
     /// Root node of the tree.
-    pub fn root(&self) -> Branch<HASH_SIZE, H> {
-        self.db.get_root_node().unwrap_or_else(|| {
-            let Node::Branch(branch) = self.db.empty_tree().as_ref()[0].clone() else {
-                panic!("Root should be a branch")
-            };
-            branch
-        })
-    }
-
-    pub fn get_leaf_from_top(&self, key: [u8; HASH_SIZE]) -> Leaf<HASH_SIZE, H> {
-        let mut current_branch = Node::Branch(self.db.get_root_node().unwrap());
-        for i in 0..Self::max_height() {
-            if bit_index(i, &key) == 0 {
-                let (left, _) = self.db.get_children(i, current_branch.hash());
-                current_branch = left;
-            } else {
-                let (_, right) = self.db.get_children(i, current_branch.hash());
-                current_branch = right;
+    pub fn root(&self) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
+        match self.db.get_root_node() {
+            Some(branch) => Ok(branch),
+            None => {
+                let Node::Branch(branch) = self.db.empty_tree().as_ref()[0].clone() else {
+                    return Err(TreeError::NodeNotBranch);
+                };
+                Ok(branch)
             }
         }
+    }
+
+    pub fn get_leaf_from_top(&self, key: [u8; HASH_SIZE]) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
+        let mut current_branch = Node::Branch(self.db.get_root_node().ok_or(TreeError::NodeNotFound)?);
+        for i in 0..Self::max_height() {
+            let (left, right) = self.db.get_children(i, current_branch.hash())?;
+            current_branch = if bit_index(i, &key) == 0 {
+                left
+            } else {
+                right
+            };
+        }
         match current_branch {
-            Node::Leaf(leaf) => leaf,
-            Node::Branch(_) => panic!("expected leaf found branch"),
-            Node::Empty(_) => panic!("Empty node"),
-            Node::Compact(_) => unreachable!("tree isn't compact"),
-            Node::Computed(_) => unreachable!("Only used for dbs"),
+            Node::Leaf(leaf) => Ok(leaf),
+            Node::Branch(_) => Err(TreeError::NodeNotLeaf),
+            Node::Empty(_) => Err(TreeError::NodeNotEmptyTree),
+            Node::Compact(_) => Err(TreeError::NodeNotCompactLeaf),
+            Node::Computed(_) => Err(TreeError::NodeNotFound),
         }
     }
 
@@ -151,10 +84,10 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
         &self,
         key: [u8; HASH_SIZE],
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, Node<HASH_SIZE, H>, Node<HASH_SIZE, H>),
-    ) -> Node<HASH_SIZE, H> {
-        let mut current = Node::Branch(self.root());
+    ) -> Result<Node<HASH_SIZE, H>, TreeError<DbError>> {
+        let mut current = Node::Branch(self.root()?);
         for i in 0..Self::max_height() {
-            let (left, right) = self.db.get_children(i, current.hash());
+            let (left, right) = self.db.get_children(i, current.hash())?;
             let (next, sibling) = if bit_index(i, &key) == 0 {
                 (left, right)
             } else {
@@ -164,11 +97,11 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
             current = next;
         }
         match current {
-            Node::Leaf(leaf) => Node::Leaf(leaf),
-            Node::Branch(_) => panic!("expected leaf found branch"),
-            Node::Empty(empty) => Node::Empty(empty),
-            Node::Compact(_) => unreachable!("tree isn't compact"),
-            Node::Computed(_) => unreachable!("Only used for dbs"),
+            Node::Leaf(leaf) => Ok(Node::Leaf(leaf)),
+            Node::Branch(_) => Err(TreeError::NodeNotLeaf),
+            Node::Empty(empty) => Ok(Node::Empty(empty)),
+            Node::Compact(_) => Err(TreeError::NodeNotCompactLeaf),
+            Node::Computed(_) => Err(TreeError::NodeNotFound),
         }
     }
 
@@ -187,7 +120,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
         start: Leaf<HASH_SIZE, H>,
         siblings: Vec<Arc<Node<HASH_SIZE, H>>>,
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>),
-    ) -> Branch<HASH_SIZE, H> {
+    ) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
         let mut current = Arc::new(Node::Leaf(start));
         for i in (0..Self::max_height()).rev() {
             let sibling = siblings[Self::max_height() - 1 - i].clone();
@@ -200,25 +133,24 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
             current = Arc::new(parent);
         }
         if let Node::Branch(current) = current.borrow() {
-            current.clone()
+            Ok(current.clone())
         } else {
-            panic!("Shouldn't end on a leaf");
+            Err(TreeError::NodeNotBranch)
         }
     }
 
     /// Insert a leaf in the tree.
-    pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) {
+    pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Result<(), TreeError<DbError>> {
         let mut prev_parents = Vec::with_capacity(Self::max_height());
         let mut siblings = Vec::with_capacity(Self::max_height());
 
         self.walk_down(key, |_, _next, sibling, parent| {
             prev_parents.push(parent.hash());
             siblings.push(Arc::new(sibling));
-        });
+        })?;
         prev_parents.reverse();
         siblings.reverse();
 
-        // Create a vector to store operations we'll perform after walk_up
         let mut branches_delete = Vec::new();
         let mut branches_insertion = Vec::new();
         let root = self.walk_up(
@@ -236,17 +168,16 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>
                     }
                 }
             },
-        );
+        )?;
 
         for branch in branches_insertion {
-            self.db.insert_branch(branch);
+            self.db.insert_branch(branch)?;
         }
-        // Perform the database operations after walk_up
         for key in branches_delete {
-            self.db.delete_branch(&key);
+            self.db.delete_branch(&key)?;
         }
 
-        self.db.insert_leaf(leaf);
-        self.db.update_root(root);
+        self.db.insert_leaf(leaf)?;
+        self.db.update_root(root)
     }
 }
