@@ -28,7 +28,6 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
     /// The error type for database operations
     type DbError;
 
-
     /// Get the root node of the tree
     fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>>;
 
