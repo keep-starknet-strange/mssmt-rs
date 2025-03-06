@@ -28,9 +28,11 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
     /// The error type for database operations
     type DbError;
 
+
     /// Get the root node of the tree
     fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>>;
 
+    #[allow(clippy::type_complexity)]
     /// Get the children of a node at the given height and key
     fn get_children(
         &self,
@@ -42,10 +44,16 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
     fn insert_leaf(&mut self, leaf: Leaf<HASH_SIZE, H>) -> Result<(), TreeError<Self::DbError>>;
 
     /// Insert a branch node
-    fn insert_branch(&mut self, branch: Branch<HASH_SIZE, H>) -> Result<(), TreeError<Self::DbError>>;
+    fn insert_branch(
+        &mut self,
+        branch: Branch<HASH_SIZE, H>,
+    ) -> Result<(), TreeError<Self::DbError>>;
 
     /// Insert a compact leaf node
-    fn insert_compact_leaf(&mut self, compact_leaf: CompactLeaf<HASH_SIZE, H>) -> Result<(), TreeError<Self::DbError>>;
+    fn insert_compact_leaf(
+        &mut self,
+        compact_leaf: CompactLeaf<HASH_SIZE, H>,
+    ) -> Result<(), TreeError<Self::DbError>>;
 
     /// Get the empty tree for this database
     fn empty_tree(&self) -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>;
@@ -60,5 +68,8 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
     fn delete_leaf(&mut self, key: &[u8; HASH_SIZE]) -> Result<(), TreeError<Self::DbError>>;
 
     /// Delete a compact leaf node
-    fn delete_compact_leaf(&mut self, key: &[u8; HASH_SIZE]) -> Result<(), TreeError<Self::DbError>>;
-} 
+    fn delete_compact_leaf(
+        &mut self,
+        key: &[u8; HASH_SIZE],
+    ) -> Result<(), TreeError<Self::DbError>>;
+}

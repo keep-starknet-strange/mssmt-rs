@@ -9,7 +9,6 @@
 //! - Cryptographic verification
 //! - Flexible storage backend through the `Db` trait
 
-mod compact_tree;
 mod db;
 mod empty_tree;
 mod error;
@@ -17,12 +16,12 @@ mod memory_db;
 mod node;
 mod tree;
 
-pub use compact_tree::CompactMSSMT;
 pub use db::{Db, ThreadSafe};
 pub use empty_tree::{EmptyTree, TreeSize};
 pub use error::TreeError;
 pub use memory_db::MemoryDb;
 pub use node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node};
+pub use tree::CompactMSSMT;
 pub use tree::MSSMT;
 
 #[cfg(test)]

@@ -4,7 +4,10 @@ use hex_literal::hex;
 use sha2::Sha256;
 
 use crate::{
-    compact_tree::CompactMSSMT, node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node}, tree::MSSMT, Db, EmptyTree, MemoryDb, ThreadSafe
+    node::{Branch, CompactLeaf, EmptyLeaf, Hasher, Leaf, Node},
+    tree::CompactMSSMT,
+    tree::MSSMT,
+    Db, EmptyTree, MemoryDb, ThreadSafe,
 };
 
 #[test]
@@ -42,7 +45,8 @@ fn test_leaves_insertion() {
     );
 
     let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default())).unwrap();
-    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default())).unwrap();
+    let mut compact_tree =
+        CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default())).unwrap();
 
     tree.insert([1; 32], leaf1.clone()).unwrap();
     compact_tree.insert([1; 32], leaf1.clone()).unwrap();
@@ -79,7 +83,10 @@ fn test_leaves_insertion() {
     tree.insert(key4, leaf4.clone()).unwrap();
     compact_tree.insert(key4, leaf4.clone()).unwrap();
 
-    assert_eq!(tree.root().unwrap().hash(), compact_tree.root().unwrap().hash());
+    assert_eq!(
+        tree.root().unwrap().hash(),
+        compact_tree.root().unwrap().hash()
+    );
 }
 
 #[test]
@@ -89,7 +96,8 @@ fn test_history_independant() {
     let leaf3 = Leaf::new([3; 32].to_vec(), 3);
 
     let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default())).unwrap();
-    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default())).unwrap();
+    let mut compact_tree =
+        CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default())).unwrap();
     tree.insert([1; 32], leaf1.clone()).unwrap();
     tree.insert([3; 32], leaf3.clone()).unwrap();
     tree.insert([2; 32], leaf2.clone()).unwrap();
@@ -303,4 +311,12 @@ fn test_insertion() {
             assert_eq!(branch.right().hash(), right.hash());
         }
     }
+}
+
+#[test]
+fn test_empty_tree_root() {
+    let db = MemoryDb::<32, Sha256>::default();
+    let tree = MSSMT::<32, Sha256, ()>::new(Box::new(db)).unwrap();
+    let root = tree.root().unwrap();
+    assert_eq!(root.hash(), tree.db().empty_tree()[0].hash());
 }

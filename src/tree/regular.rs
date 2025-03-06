@@ -18,7 +18,7 @@ pub struct MSSMT<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> 
 }
 
 /// Get the bit at the given index in the key.
-pub(crate) fn bit_index(index: usize, key: &[u8]) -> u8 {
+pub fn bit_index(index: usize, key: &[u8]) -> u8 {
     // `index as usize / 8` to get the index of the interesting byte
     // `index % 8` to get the interesting bit index in the previously selected byte
     // right shift it and keep only this interesting bit with & 1.
@@ -27,9 +27,11 @@ pub(crate) fn bit_index(index: usize, key: &[u8]) -> u8 {
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_SIZE, H, DbError> {
     /// Creates a new mssmt. This will build an empty tree which will involve a lot of hashing.
-    pub fn new(mut db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>) -> Result<Self, TreeError<DbError>> {
+    pub fn new(
+        mut db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>,
+    ) -> Result<Self, TreeError<DbError>> {
         let Node::Branch(branch) = db.empty_tree().as_ref()[0].clone() else {
-            return Err(TreeError::NodeNotBranch);
+            unreachable!("Invalid empty tree. The root node should always be a branch.");
         };
         db.update_root(branch)?;
         Ok(Self {
@@ -56,25 +58,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
                 };
                 Ok(branch)
             }
-        }
-    }
-
-    pub fn get_leaf_from_top(&self, key: [u8; HASH_SIZE]) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
-        let mut current_branch = Node::Branch(self.db.get_root_node().ok_or(TreeError::NodeNotFound)?);
-        for i in 0..Self::max_height() {
-            let (left, right) = self.db.get_children(i, current_branch.hash())?;
-            current_branch = if bit_index(i, &key) == 0 {
-                left
-            } else {
-                right
-            };
-        }
-        match current_branch {
-            Node::Leaf(leaf) => Ok(leaf),
-            Node::Branch(_) => Err(TreeError::NodeNotLeaf),
-            Node::Empty(_) => Err(TreeError::NodeNotEmptyTree),
-            Node::Compact(_) => Err(TreeError::NodeNotCompactLeaf),
-            Node::Computed(_) => Err(TreeError::NodeNotFound),
         }
     }
 
@@ -125,9 +108,15 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
         for i in (0..Self::max_height()).rev() {
             let sibling = siblings[Self::max_height() - 1 - i].clone();
             let parent = if bit_index(i, &key) == 0 {
-                Node::from((current.clone(), sibling.clone()))
+                Node::Branch(Branch::new_with_arc_children(
+                    current.clone(),
+                    sibling.clone(),
+                ))
             } else {
-                Node::from((sibling.clone(), current.clone()))
+                Node::Branch(Branch::new_with_arc_children(
+                    sibling.clone(),
+                    current.clone(),
+                ))
             };
             for_each(i, &current, &sibling, &parent);
             current = Arc::new(parent);
@@ -140,7 +129,11 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
     }
 
     /// Insert a leaf in the tree.
-    pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Result<(), TreeError<DbError>> {
+    pub fn insert(
+        &mut self,
+        key: [u8; HASH_SIZE],
+        leaf: Leaf<HASH_SIZE, H>,
+    ) -> Result<(), TreeError<DbError>> {
         let mut prev_parents = Vec::with_capacity(Self::max_height());
         let mut siblings = Vec::with_capacity(Self::max_height());
 
@@ -179,5 +172,22 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
 
         self.db.insert_leaf(leaf)?;
         self.db.update_root(root)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::MSSMT;
+    use crate::MemoryDb;
+    use sha2::Sha256;
+
+    #[test]
+    fn test_mssmt_new() {
+        let db = Box::new(MemoryDb::<32, Sha256>::new());
+        let mssmt = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+        assert_eq!(
+            mssmt.root().unwrap().hash(),
+            mssmt.db().empty_tree()[0].hash()
+        );
     }
 }

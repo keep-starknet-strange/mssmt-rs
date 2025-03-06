@@ -3,9 +3,7 @@
 use std::{cell::LazyCell, marker::PhantomData, sync::Arc};
 use typenum::{Prod, Sum, Unsigned, U1, U8};
 
-use crate::{
-    node::{EmptyLeaf, Hasher, Node},
-};
+use crate::node::{EmptyLeaf, Hasher, Node};
 
 /// Define the empty tree array size as (HASH_SIZE * 8) + 1
 pub type TreeSize = Sum<Prod<U8, typenum::U32>, U1>;
@@ -40,11 +38,11 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyTree<HASH_SIZE, 
         empty_tree.reverse();
 
         let Node::Branch(_branch) = &empty_tree[0] else {
-            panic!("Root should be a branch")
+            unreachable!("Root should be a branch")
         };
 
         empty_tree
             .try_into()
-            .unwrap_or_else(|_| panic!("Incorrect array size"))
+            .unwrap_or_else(|_| unreachable!("Incorrect array size"))
     }
-} 
+}

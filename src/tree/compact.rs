@@ -1,5 +1,5 @@
 //! A compact representation of a Merkle Sum Sparse Merkle Tree (MS-SMT).
-//! 
+//!
 //! This implementation optimizes storage by compacting subtrees that contain only a single leaf.
 //! Instead of storing all intermediate branch nodes, it stores just the leaf and its path information.
 //! This significantly reduces the storage requirements while maintaining the same cryptographic properties.
@@ -8,8 +8,11 @@ use std::marker::PhantomData;
 use typenum::Unsigned;
 
 use crate::{
-    node::{Branch, CompactLeaf, Hasher, Leaf, Node}, tree::bit_index, Db, TreeError, TreeSize
+    node::{Branch, CompactLeaf, Hasher, Leaf, Node},
+    Db, TreeError, TreeSize,
 };
+
+use super::regular::bit_index;
 
 /// A compact Merkle Sum Sparse Merkle Tree implementation.
 ///
@@ -27,9 +30,13 @@ pub struct CompactMSSMT<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, Db
     _phantom: PhantomData<H>,
 }
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> CompactMSSMT<HASH_SIZE, H, DbError> {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
+    CompactMSSMT<HASH_SIZE, H, DbError>
+{
     /// Creates a new empty compact MS-SMT with the given database backend.
-    pub fn new(db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>) -> Result<Self, TreeError<DbError>> {
+    pub fn new(
+        db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>,
+    ) -> Result<Self, TreeError<DbError>> {
         Ok(Self {
             db,
             _phantom: PhantomData,
@@ -54,7 +61,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> CompactMSSMT
             Ok(branch)
         } else {
             let Node::Branch(branch) = self.db.empty_tree().as_ref()[0].clone() else {
-                return Err(TreeError::NodeNotBranch);
+                unreachable!("Invalid empty tree. The root node should always be a branch.");
             };
             Ok(branch)
         }
@@ -294,12 +301,16 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> CompactMSSMT
     /// # Returns
     ///
     /// Returns an error if inserting the leaf would cause the tree's sum to overflow
-    pub fn insert(&mut self, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Result<(), TreeError<DbError>> {
+    pub fn insert(
+        &mut self,
+        key: [u8; HASH_SIZE],
+        leaf: Leaf<HASH_SIZE, H>,
+    ) -> Result<(), TreeError<DbError>> {
         let root = if let Some(branch) = self.db.get_root_node() {
             branch
         } else {
             let Node::Branch(branch) = self.db.empty_tree()[0].clone() else {
-                return Err(TreeError::NodeNotBranch);
+                unreachable!("Invalid empty tree. The root node should always be a branch.");
             };
             branch
         };
@@ -309,7 +320,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> CompactMSSMT
         let sum_root = root.sum();
         let sum_leaf = leaf.sum();
         if sum_root.checked_add(sum_leaf).is_none() {
-            return Err(TreeError::NodeNotFound); // TODO: Add a specific error for overflow
+            return Err(TreeError::SumOverflow);
         }
 
         let new_root = self.insert_leaf(&key, 0, &root.hash(), leaf)?;
@@ -331,5 +342,43 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> CompactMSSMT
         } else {
             (right, left)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::CompactMSSMT;
+    use crate::{Leaf, MemoryDb, TreeError};
+    use hex_literal::hex;
+    use sha2::Sha256;
+
+    #[test]
+    fn test_compact_mssmt_new() {
+        let db = Box::new(MemoryDb::<32, Sha256>::new());
+        let compact_mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        assert_eq!(
+            compact_mssmt.root().unwrap().hash(),
+            compact_mssmt.db().empty_tree()[0].hash()
+        );
+    }
+
+    #[test]
+    fn test_compact_mssmt_sum_overflow() {
+        let db = Box::new(MemoryDb::<32, Sha256>::new());
+        let mut compact_mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let leaf = Leaf::new(vec![1; 32], u64::MAX);
+        compact_mssmt
+            .insert(
+                hex!("0000000000000000000000000000000000000000000000000000000000000000"),
+                leaf.clone(),
+            )
+            .unwrap();
+        assert_eq!(
+            compact_mssmt.insert(
+                hex!("0000000000000000000000000000000000000000000000000000000000000001"),
+                leaf
+            ),
+            Err(TreeError::SumOverflow)
+        );
     }
 }

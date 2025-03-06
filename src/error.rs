@@ -15,4 +15,6 @@ pub enum TreeError<DbError> {
     NodeNotEmptyTree,
     /// Database error
     DbError(DbError),
-} 
+    /// Sum overflow
+    SumOverflow,
+}

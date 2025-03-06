@@ -1,23 +1,20 @@
 use std::{collections::HashMap, sync::Arc};
-use serde::{Deserialize, Serialize};
-use serde_with::{Bytes, serde_as};
+
 use typenum::Unsigned;
 
 use crate::{
-    db::Db, empty_tree::{EmptyTree, TreeSize}, node::{Branch, CompactLeaf, Hasher, Leaf, Node}, ThreadSafe, TreeError
+    db::Db,
+    empty_tree::{EmptyTree, TreeSize},
+    node::{Branch, CompactLeaf, Hasher, Leaf, Node},
+    ThreadSafe, TreeError,
 };
 
 /// A simple in-memory database implementation for testing
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct MemoryDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
-    #[serde_as(as = "HashMap<Bytes, _>")]
     branches: HashMap<[u8; HASH_SIZE], Branch<HASH_SIZE, H>>,
-    #[serde_as(as = "HashMap<Bytes, _>")]
     leaves: HashMap<[u8; HASH_SIZE], Leaf<HASH_SIZE, H>>,
-    #[serde_as(as = "HashMap<Bytes, _>")]
     compact_leaves: HashMap<[u8; HASH_SIZE], CompactLeaf<HASH_SIZE, H>>,
-    #[serde(skip, default = "EmptyTree::empty_tree")]
     empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
     root: Option<Branch<HASH_SIZE, H>>,
 }
@@ -46,7 +43,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Default for MemoryDb<
     }
 }
 
-impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_SIZE, H> for MemoryDb<HASH_SIZE, H> {
+impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_SIZE, H>
+    for MemoryDb<HASH_SIZE, H>
+{
     type DbError = ();
 
     fn get_root_node(&self) -> Option<Branch<HASH_SIZE, H>> {
@@ -92,13 +91,20 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
         Ok(())
     }
 
-    fn insert_branch(&mut self, branch: Branch<HASH_SIZE, H>) -> Result<(), TreeError<Self::DbError>> {
+    fn insert_branch(
+        &mut self,
+        branch: Branch<HASH_SIZE, H>,
+    ) -> Result<(), TreeError<Self::DbError>> {
         self.branches.insert(branch.hash(), branch);
         Ok(())
     }
 
-    fn insert_compact_leaf(&mut self, compact_leaf: CompactLeaf<HASH_SIZE, H>) -> Result<(), TreeError<Self::DbError>> {
-        self.compact_leaves.insert(compact_leaf.hash(), compact_leaf);
+    fn insert_compact_leaf(
+        &mut self,
+        compact_leaf: CompactLeaf<HASH_SIZE, H>,
+    ) -> Result<(), TreeError<Self::DbError>> {
+        self.compact_leaves
+            .insert(compact_leaf.hash(), compact_leaf);
         Ok(())
     }
 
@@ -121,8 +127,92 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
         Ok(())
     }
 
-    fn delete_compact_leaf(&mut self, key: &[u8; HASH_SIZE]) -> Result<(), TreeError<Self::DbError>> {
-        self.compact_leaves.remove(key).ok_or(TreeError::NodeNotFound)?;
+    fn delete_compact_leaf(
+        &mut self,
+        key: &[u8; HASH_SIZE],
+    ) -> Result<(), TreeError<Self::DbError>> {
+        self.compact_leaves
+            .remove(key)
+            .ok_or(TreeError::NodeNotFound)?;
         Ok(())
     }
-} 
+}
+
+#[cfg(test)]
+mod test {
+    use super::Db;
+    use crate::{Branch, EmptyLeaf, Leaf, MemoryDb, Node, TreeError};
+    use hex_literal::hex;
+    use sha2::Sha256;
+
+    #[test]
+    fn test_memory_db_new() {
+        let db = MemoryDb::<32, Sha256>::new();
+        assert_eq!(db.empty_tree().len(), 257);
+    }
+
+    #[test]
+    fn test_memory_db_get_root_node() {
+        let db = MemoryDb::<32, Sha256>::new();
+        assert!(db.get_root_node().is_none());
+    }
+
+    #[test]
+    fn test_memory_db_get_children() {
+        let mut db = MemoryDb::<32, Sha256>::new();
+        assert_eq!(
+            db.get_children(
+                0,
+                hex!("0000000000000000000000000000000000000000000000000000000000000000")
+            )
+            .unwrap_err(),
+            TreeError::NodeNotFound
+        );
+        let Node::Branch(empty_root) = db.empty_tree()[0].clone() else {
+            panic!("Empty root is not a branch");
+        };
+        db.insert_branch(empty_root.clone()).unwrap();
+        let (children_left, children_right) = db.get_children(0, empty_root.hash()).unwrap();
+        assert_eq!(children_left.hash(), db.empty_tree()[1].hash());
+        assert_eq!(children_right.hash(), db.empty_tree()[1].hash());
+    }
+
+    #[test]
+    fn test_memory_db_insert_leaf() {
+        let mut db = MemoryDb::<32, Sha256>::new();
+        let leaf = Leaf::<32, Sha256>::new(vec![1, 2, 3], 1);
+        db.insert_leaf(leaf).unwrap();
+        assert_eq!(db.get_leaves().len(), 1);
+    }
+
+    #[test]
+    fn test_memory_db_delete_leaf() {
+        let mut db = MemoryDb::<32, Sha256>::new();
+        let leaf = Leaf::<32, Sha256>::new(vec![1, 2, 3], 1);
+        db.insert_leaf(leaf.clone()).unwrap();
+        db.delete_leaf(&leaf.hash()).unwrap();
+        assert_eq!(db.get_leaves().len(), 0);
+    }
+
+    #[test]
+    fn test_memory_db_insert_branch() {
+        let mut db = MemoryDb::<32, Sha256>::new();
+        let branch = Branch::new(
+            Node::Empty(EmptyLeaf::<32, Sha256>::new()),
+            Node::Empty(EmptyLeaf::<32, Sha256>::new()),
+        );
+        db.insert_branch(branch).unwrap();
+        assert_eq!(db.get_branches().len(), 1);
+    }
+
+    #[test]
+    fn test_memory_db_get_children_leaf() {
+        let mut db = MemoryDb::<32, Sha256>::new();
+        let leaf = Leaf::<32, Sha256>::new(vec![1, 2, 3], 1);
+        db.insert_leaf(leaf.clone()).unwrap();
+        assert_eq!(
+            db.get_children(0, leaf.hash()).unwrap_err(),
+            TreeError::NodeNotBranch
+        );
+    }
+}
