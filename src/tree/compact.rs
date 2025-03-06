@@ -43,9 +43,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         })
     }
 
-    /// Returns the maximum height of the tree.
-    pub fn max_height() -> usize {
-        TreeSize::USIZE
+    /// Returns the maximum number of levels in the tree (HASH_SIZE * 8)
+    pub fn max_levels() -> usize {
+        TreeSize::USIZE - 1
     }
 
     /// Returns a reference to the underlying database.
@@ -87,7 +87,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>),
     ) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
         let mut current = Node::Branch(self.db.get_root_node().ok_or(TreeError::NodeNotFound)?);
-        for i in 0..Self::max_height() {
+        for i in 0..Self::max_levels() {
             let (left, right) = self.db.get_children(i, current.hash())?;
             let (mut next, mut sibling) = Self::step_order(i, path, left, right);
             match next {
@@ -99,17 +99,16 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                     // Now that all required branches are reconstructed we
                     // can continue the search for the leaf matching the
                     // passed key.
-                    for j in i..Self::max_height() {
+                    for j in i..Self::max_levels() {
                         for_each(j, &next, &sibling, &current);
                         current = next.clone();
-
-                        if j < Self::max_height() - 1 {
+                        if j < Self::max_levels() - 1 {
                             // Since we have all the branches we
                             // need extracted already we can just
                             // continue walking down.
                             let branch = match &current {
                                 Node::Branch(b) => b,
-                                _ => return Err(TreeError::NodeNotBranch),
+                                _ => return Err(TreeError::ExpectedBranch),
                             };
                             let (n, s) = Self::step_order(
                                 j + 1,
@@ -122,7 +121,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                         }
                     }
                     let Node::Leaf(leaf) = current else {
-                        return Err(TreeError::NodeNotLeaf);
+                        return Err(TreeError::ExpectedLeaf);
                     };
                     return Ok(leaf);
                 }
@@ -133,7 +132,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
             }
         }
         let Node::Leaf(leaf) = current else {
-            return Err(TreeError::NodeNotLeaf);
+            return Err(TreeError::ExpectedLeaf);
         };
         Ok(leaf)
     }
@@ -161,7 +160,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
     ) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
         // Find the common prefix first
         let mut i = 0;
-        while i < Self::max_height() && bit_index(i, &key1) == bit_index(i, &key2) {
+        while i < Self::max_levels() && bit_index(i, &key1) == bit_index(i, &key2) {
             i += 1;
         }
 
@@ -234,6 +233,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
             }
             Node::Compact(node) => {
                 // First delete the old leaf.
+                self.db.delete_leaf(&node.leaf().hash())?;
                 self.db.delete_compact_leaf(&node.hash())?;
 
                 if *key == *node.key() {
@@ -269,7 +269,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                     Node::Branch(self.insert_leaf(key, next_height, &node.hash(), leaf)?)
                 }
             }
-            _ => return Err(TreeError::NodeNotBranch),
+            _ => return Err(TreeError::ExpectedBranch),
         };
 
         // Delete the old root if not empty
@@ -343,12 +343,24 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
             (right, left)
         }
     }
+
+    pub fn merkle_proof(
+        &self,
+        key: [u8; HASH_SIZE],
+    ) -> Result<Vec<Node<HASH_SIZE, H>>, TreeError<DbError>> {
+        let mut proof = Vec::with_capacity(Self::max_levels());
+        self.walk_down(&key, |_, _next, sibling, _| {
+            proof.push(sibling.clone());
+        })?;
+        proof.reverse();
+        Ok(proof)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::CompactMSSMT;
-    use crate::{Leaf, MemoryDb, TreeError};
+    use crate::{tree::verify_merkle_proof, Leaf, MemoryDb, TreeError};
     use hex_literal::hex;
     use sha2::Sha256;
 
@@ -379,6 +391,32 @@ mod test {
                 leaf
             ),
             Err(TreeError::SumOverflow)
+        );
+    }
+    #[test]
+    fn test_mssmt_merkle_proof() {
+        let db = Box::new(MemoryDb::<32, Sha256>::new());
+        let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let value = vec![0; 32];
+        let leaf = Leaf::new(value, 1);
+        mssmt.insert([0; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof([0; 32]).unwrap();
+        let root = mssmt.root().unwrap();
+        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap();
+    }
+
+    #[test]
+    fn test_mssmt_merkle_proof_invalid() {
+        let db = Box::new(MemoryDb::<32, Sha256>::new());
+        let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let value = vec![0; 32];
+        let leaf = Leaf::new(value, 1);
+        mssmt.insert([0; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof([1; 32]).unwrap();
+        let root = mssmt.root().unwrap();
+        assert_eq!(
+            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap_err(),
+            TreeError::InvalidMerkleProof
         );
     }
 }

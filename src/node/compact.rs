@@ -64,7 +64,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE
         let empty_tree = EmptyTree::<HASH_SIZE, H>::empty_tree();
 
         // Walk up and recreate the missing branches
-        for j in (height + 1..HASH_SIZE * 8).rev() {
+        for j in (height + 2..=(HASH_SIZE * 8)).rev() {
             let (left, right) = if bit_index(j - 1, &self.key) == 0 {
                 (current, empty_tree[j].clone())
             } else {
@@ -81,9 +81,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for CompactLe
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Compact {{ sum: {}, hash: {} }}",
-            self.sum(),
-            hex::encode(self.hash().as_slice())
+            "Compact {{ hash: {}, leaf: {} }}",
+            hex::encode(self.hash().as_slice()),
+            self.leaf(),
         )
     }
 }
@@ -150,6 +150,6 @@ mod test {
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
             leaf,
         );
-        assert_eq!(format!("{}", compact_leaf), "Compact { sum: 1, hash: acd89d5503896be78b9cc1162604ddd0c2a25fe77b73d2420b816b5da28e1f5d }");
+        assert_eq!(format!("{}", compact_leaf), "Compact { hash: acd89d5503896be78b9cc1162604ddd0c2a25fe77b73d2420b816b5da28e1f5d, leaf: Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, value: [1, 2, 3] } }");
     }
 }

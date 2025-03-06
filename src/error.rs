@@ -6,15 +6,17 @@ pub enum TreeError<DbError> {
     /// Node was not found in the tree
     NodeNotFound,
     /// Node is not a branch node
-    NodeNotBranch,
+    ExpectedBranch,
     /// Node is not a leaf node
-    NodeNotLeaf,
+    ExpectedLeaf,
     /// Node is not a compact leaf node
-    NodeNotCompactLeaf,
+    ExpectedCompactLeaf,
     /// Node is not an empty tree node
-    NodeNotEmptyTree,
+    ExpectedEmptyTree,
     /// Database error
     DbError(DbError),
     /// Sum overflow
     SumOverflow,
+    /// Invalid merkle proof
+    InvalidMerkleProof,
 }

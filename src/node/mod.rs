@@ -45,8 +45,6 @@ pub enum Node<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     Branch(Branch<HASH_SIZE, H>),
     /// A compact leaf node containing a value and sum
     Compact(CompactLeaf<HASH_SIZE, H>),
-    /// An empty leaf representing unset branches
-    Empty(EmptyLeaf<HASH_SIZE, H>),
     /// A computed node
     Computed(ComputedNode<HASH_SIZE>),
 }
@@ -54,7 +52,13 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Debug for Node<HASH_S
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Leaf(leaf) => {
-                write!(f, "Leaf {{ sum: {}, hash: {:?} }}", leaf.sum(), leaf.hash())
+                write!(
+                    f,
+                    "Leaf {{ sum: {}, hash: {:?}, value: {:?} }}",
+                    leaf.sum(),
+                    leaf.hash(),
+                    leaf.value()
+                )
             }
             Self::Branch(branch) => write!(
                 f,
@@ -67,12 +71,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Debug for Node<HASH_S
                 "Compact {{ sum: {}, hash: {:?} }}",
                 compact.sum(),
                 compact.hash()
-            ),
-            Self::Empty(empty) => write!(
-                f,
-                "Empty {{ sum: {}, hash: {:?} }}",
-                empty.sum(),
-                empty.hash()
             ),
             Self::Computed(computed) => write!(
                 f,
@@ -89,7 +87,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Node<HASH
             Self::Leaf(leaf) => format!("{}", leaf),
             Self::Branch(branch) => format!("{}", branch),
             Self::Compact(compact) => format!("{}", compact),
-            Self::Empty(empty) => format!("{}", empty),
             Self::Computed(computed) => format!("{}", computed),
         })
     }
@@ -104,13 +101,15 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
     pub fn new_leaf(value: Vec<u8>, sum: Sum) -> Self {
         Self::Leaf(Leaf::<HASH_SIZE, H>::new(value, sum))
     }
+    pub fn new_empty_leaf() -> Self {
+        Self::Leaf(Leaf::<HASH_SIZE, H>::Empty(EmptyLeaf::<HASH_SIZE, H>::new()))
+    }
 
     /// Returns the hash of the node. NO HASHING IS DONE HERE.
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         match self {
             Self::Leaf(leaf) => leaf.hash(),
             Self::Branch(branch) => branch.hash(),
-            Self::Empty(empty) => empty.hash(),
             Self::Compact(compact) => compact.hash(),
             Self::Computed(computed) => computed.hash(),
         }
@@ -121,7 +120,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
         match self {
             Self::Leaf(leaf) => leaf.sum(),
             Self::Branch(branch) => branch.sum(),
-            Self::Empty(empty) => empty.sum(),
             Self::Compact(compact) => compact.sum(),
             Self::Computed(computed) => computed.sum(),
         }
@@ -130,7 +128,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
 
 #[cfg(test)]
 mod test {
-    use crate::{node::ComputedNode, CompactLeaf, EmptyLeaf, Leaf};
+    use crate::{node::ComputedNode, CompactLeaf, Leaf};
 
     use super::Node;
     use hex_literal::hex;
@@ -159,7 +157,7 @@ mod test {
     #[test]
     fn test_node_display() {
         let leaf = Node::<32, Sha256>::new_leaf(vec![1, 2, 3], 1);
-        assert_eq!(format!("{}", leaf), "Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d }");
+        assert_eq!(format!("{}", leaf), "Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, value: [1, 2, 3] }");
         let branch = Node::<32, Sha256>::new_branch(leaf.clone(), leaf.clone());
         assert_eq!(format!("{}", branch), "Branch { sum: 2, hash: 8ddaeb6bfdb6365fa5ec597b706b71ab8cf3bfca3a36d66493fc790aeac2d157 }");
         let compact = Node::<32, Sha256>::Compact(CompactLeaf::<32, Sha256>::new(
@@ -167,8 +165,8 @@ mod test {
             hex!("8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d"),
             Leaf::<32, Sha256>::new(vec![1, 2, 3], 1),
         ));
-        assert_eq!(format!("{}", compact), "Compact { sum: 1, hash: 64e1cbaf8280fe4e534d612276ab9d3988adc8174278c28d528202a936c402dc }");
-        let empty = Node::<32, Sha256>::Empty(EmptyLeaf::<32, Sha256>::new());
+        assert_eq!(format!("{}", compact), "Compact { hash: 64e1cbaf8280fe4e534d612276ab9d3988adc8174278c28d528202a936c402dc, leaf: Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, value: [1, 2, 3] } }");
+        let empty = Node::<32, Sha256>::new_empty_leaf();
         assert_eq!(format!("{}", empty), "Empty { sum: 0, hash: af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc }");
         let computed = Node::<32, Sha256>::Computed(ComputedNode::<32>::new(
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
@@ -180,7 +178,7 @@ mod test {
     #[test]
     fn test_node_debug() {
         let leaf = Node::<32, Sha256>::new_leaf(vec![1, 2, 3], 1);
-        assert_eq!(format!("{:?}", leaf), "Leaf { sum: 1, hash: [139, 172, 169, 78, 212, 159, 203, 83, 48, 115, 66, 204, 16, 162, 73, 112, 201, 214, 99, 9, 121, 77, 85, 175, 21, 50, 186, 96, 41, 231, 221, 141] }");
+        assert_eq!(format!("{:?}", leaf), "Leaf { sum: 1, hash: [139, 172, 169, 78, 212, 159, 203, 83, 48, 115, 66, 204, 16, 162, 73, 112, 201, 214, 99, 9, 121, 77, 85, 175, 21, 50, 186, 96, 41, 231, 221, 141], value: [1, 2, 3] }");
         let branch = Node::<32, Sha256>::new_branch(leaf.clone(), leaf.clone());
         assert_eq!(format!("{:?}", branch), "Branch { sum: 2, hash: [141, 218, 235, 107, 253, 182, 54, 95, 165, 236, 89, 123, 112, 107, 113, 171, 140, 243, 191, 202, 58, 54, 214, 100, 147, 252, 121, 10, 234, 194, 209, 87] }");
         let compact = Node::<32, Sha256>::Compact(CompactLeaf::<32, Sha256>::new(
@@ -189,8 +187,8 @@ mod test {
             Leaf::<32, Sha256>::new(vec![1, 2, 3], 1),
         ));
         assert_eq!(format!("{:?}", compact), "Compact { sum: 1, hash: [100, 225, 203, 175, 130, 128, 254, 78, 83, 77, 97, 34, 118, 171, 157, 57, 136, 173, 200, 23, 66, 120, 194, 141, 82, 130, 2, 169, 54, 196, 2, 220] }");
-        let empty = Node::<32, Sha256>::Empty(EmptyLeaf::<32, Sha256>::new());
-        assert_eq!(format!("{:?}", empty), "Empty { sum: 0, hash: [175, 85, 112, 245, 161, 129, 11, 122, 247, 140, 175, 75, 199, 10, 102, 15, 13, 245, 30, 66, 186, 249, 29, 77, 229, 178, 50, 141, 224, 232, 61, 252] }");
+        let empty = Node::<32, Sha256>::new_empty_leaf();
+        assert_eq!(format!("{:?}", empty), "Leaf { sum: 0, hash: [175, 85, 112, 245, 161, 129, 11, 122, 247, 140, 175, 75, 199, 10, 102, 15, 13, 245, 30, 66, 186, 249, 29, 77, 229, 178, 50, 141, 224, 232, 61, 252], value: [] }");
         let computed = Node::<32, Sha256>::Computed(ComputedNode::<32>::new(
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
             1,

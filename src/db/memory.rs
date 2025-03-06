@@ -4,8 +4,8 @@ use typenum::Unsigned;
 
 use crate::{
     db::Db,
-    empty_tree::{EmptyTree, TreeSize},
     node::{Branch, CompactLeaf, Hasher, Leaf, Node},
+    tree::{EmptyTree, TreeSize},
     ThreadSafe, TreeError,
 };
 
@@ -82,7 +82,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
                 get_node(height + 1, branch.right().hash()),
             ))
         } else {
-            Err(TreeError::NodeNotBranch)
+            Err(TreeError::ExpectedBranch)
         }
     }
 
@@ -141,7 +141,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
 #[cfg(test)]
 mod test {
     use super::Db;
-    use crate::{Branch, EmptyLeaf, Leaf, MemoryDb, Node, TreeError};
+    use crate::{Branch, Leaf, MemoryDb, Node, TreeError};
     use hex_literal::hex;
     use sha2::Sha256;
 
@@ -197,10 +197,7 @@ mod test {
     #[test]
     fn test_memory_db_insert_branch() {
         let mut db = MemoryDb::<32, Sha256>::new();
-        let branch = Branch::new(
-            Node::Empty(EmptyLeaf::<32, Sha256>::new()),
-            Node::Empty(EmptyLeaf::<32, Sha256>::new()),
-        );
+        let branch = Branch::new(Node::new_empty_leaf(), Node::new_empty_leaf());
         db.insert_branch(branch).unwrap();
         assert_eq!(db.get_branches().len(), 1);
     }
@@ -212,7 +209,7 @@ mod test {
         db.insert_leaf(leaf.clone()).unwrap();
         assert_eq!(
             db.get_children(0, leaf.hash()).unwrap_err(),
-            TreeError::NodeNotBranch
+            TreeError::ExpectedBranch
         );
     }
 }

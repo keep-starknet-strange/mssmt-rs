@@ -1,11 +1,15 @@
 //! Database trait and implementations for the Merkle Sum Sparse Merkle Tree
 
+mod memory;
+
+pub use memory::*;
+
 use std::sync::Arc;
 use typenum::Unsigned;
 
 use crate::{
-    empty_tree::TreeSize,
     node::{Branch, CompactLeaf, Hasher, Leaf, Node},
+    tree::TreeSize,
     TreeError,
 };
 
