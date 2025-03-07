@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use merkle_sum_sparse_tree::{CompactMSSMT, Leaf, MemoryDb, MSSMT};
+use mssmt::{CompactMSSMT, Leaf, MemoryDb, MSSMT};
 use sha2::Sha256;
 
 pub fn generate_random_key() -> [u8; 32] {

@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use merkle_sum_sparse_tree::{verify_merkle_proof, CompactMSSMT, Leaf, MemoryDb, TreeError, MSSMT};
+use mssmt::{verify_merkle_proof, CompactMSSMT, Leaf, MemoryDb, TreeError, MSSMT};
 use sha2::Sha256;
 
 pub fn generate_random_key() -> [u8; 32] {
@@ -18,6 +18,7 @@ pub fn generate_random_leaf() -> Leaf<32, Sha256> {
     Leaf::new(value, rand::random::<u32>() as u64)
 }
 
+#[allow(clippy::type_complexity)]
 fn setup_trees(
     num_leaves: usize,
 ) -> (
