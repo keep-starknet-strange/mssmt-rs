@@ -4,7 +4,7 @@ mod memory;
 
 pub use memory::*;
 
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 use typenum::Unsigned;
 
 use crate::{
@@ -75,4 +75,6 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
         &mut self,
         key: &[u8; HASH_SIZE],
     ) -> Result<(), TreeError<Self::DbError>>;
+
+    fn as_any(&self) -> &dyn Any;
 }

@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use super::Sum;
 
+/// A computed node. Useful for traversing the tree without reconstructing branches
+/// which contains their children and are expensive to reconstruct.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComputedNode<const HASH_SIZE: usize> {
     node_hash: [u8; HASH_SIZE],
@@ -11,9 +13,11 @@ impl<const HASH_SIZE: usize> ComputedNode<HASH_SIZE> {
     pub fn new(node_hash: [u8; HASH_SIZE], sum: Sum) -> Self {
         Self { node_hash, sum }
     }
+    /// Returns the hash of the node.
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
     }
+    /// Returns the sum of the node.
     pub fn sum(&self) -> Sum {
         self.sum
     }
