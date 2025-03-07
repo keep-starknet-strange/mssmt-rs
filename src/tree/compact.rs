@@ -240,7 +240,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         let next_height = height + 1;
 
         let new_node = match next {
-
             Node::Branch(node) => {
                 if node.hash() == self.db.empty_tree()[next_height].hash() {
                     // This is an empty subtree, so we can just walk up

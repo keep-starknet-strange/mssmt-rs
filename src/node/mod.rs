@@ -28,7 +28,7 @@ pub type Sum = u64;
 ///
 /// # Type Parameters
 /// * `HASH_SIZE` - The size of the hash digest in bytes
-pub trait Hasher<const HASH_SIZE: usize> {
+pub trait Hasher<const HASH_SIZE: usize>: 'static {
     fn hash(data: &[u8]) -> [u8; HASH_SIZE];
 }
 

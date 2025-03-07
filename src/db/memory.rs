@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{any::Any, collections::HashMap, sync::Arc};
 
 use typenum::Unsigned;
 
@@ -135,6 +135,10 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
             .remove(key)
             .ok_or(TreeError::NodeNotFound)?;
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

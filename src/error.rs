@@ -12,7 +12,7 @@ pub enum TreeError<DbError> {
     /// Node is not a compact leaf node
     ExpectedCompactLeaf,
     /// Node is not an empty tree node
-    ExpectedEmptyTree,
+    ExpectedEmptyLeaf,
     /// Database error
     DbError(DbError),
     /// Sum overflow

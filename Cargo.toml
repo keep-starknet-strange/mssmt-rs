@@ -15,3 +15,11 @@ typenum = "1.17.0"
 [dev-dependencies]
 hex-literal = "0.4.1"
 
+[[example]]
+name = "basic_usage"
+
+[[example]]
+name = "compact_tree"
+
+[[example]]
+name = "custom_hasher"
