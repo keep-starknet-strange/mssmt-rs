@@ -2,6 +2,13 @@
 name = "merkle-sum-sparse-tree"
 version = "0.1.0"
 edition = "2021"
+authors = ["0xLucqs"]
+description = "A Rust implementation of the Merkle Sum Sparse Merkle Tree (MSSMT)"
+license = "MIT"
+repository = "https://github.com/keep-starknet-strange/mssmt-rs"
+readme = "README.md"
+keywords = ["merkle", "tree", "cryptography", "bitcoin"]
+categories = ["cryptography", "data-structures"]
 
 [features]
 default = ["multi-thread"]
@@ -13,7 +20,9 @@ sha2 = "0.10.8"
 typenum = "1.17.0"
 
 [dev-dependencies]
+criterion = "0.5"
 hex-literal = "0.4.1"
+rand = "0.8"
 
 [[example]]
 name = "basic_usage"
@@ -23,3 +32,13 @@ name = "compact_tree"
 
 [[example]]
 name = "custom_hasher"
+
+[[bench]]
+name = "insertion"
+harness = false
+path = "bench/insertion.rs"
+
+[[bench]]
+name = "proof"
+harness = false
+path = "bench/proof.rs"

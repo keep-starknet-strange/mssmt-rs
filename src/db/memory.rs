@@ -35,6 +35,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> MemoryDb<HASH_SIZE, H
     pub fn get_leaves(&self) -> &HashMap<[u8; HASH_SIZE], Leaf<HASH_SIZE, H>> {
         &self.leaves
     }
+    pub fn get_compact_leaves(&self) -> &HashMap<[u8; HASH_SIZE], CompactLeaf<HASH_SIZE, H>> {
+        &self.compact_leaves
+    }
 }
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Default for MemoryDb<HASH_SIZE, H> {
