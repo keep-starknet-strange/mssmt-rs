@@ -69,7 +69,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
         &self,
         key: [u8; HASH_SIZE],
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, Node<HASH_SIZE, H>, Node<HASH_SIZE, H>),
-    ) -> Result<Node<HASH_SIZE, H>, TreeError<DbError>> {
+    ) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
         let mut current = Node::Branch(self.root()?);
         for i in 0..Self::max_height() {
             let (left, right) = self.db.get_children(i, current.hash())?;
@@ -82,7 +82,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
             current = next;
         }
         match current {
-            Node::Leaf(leaf) => Ok(Node::Leaf(leaf)),
+            Node::Leaf(leaf) => Ok(leaf),
             Node::Branch(_) => Err(TreeError::ExpectedLeaf),
             Node::Compact(_) => Err(TreeError::ExpectedLeaf),
             Node::Computed(_) => Err(TreeError::NodeNotFound),
