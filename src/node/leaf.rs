@@ -27,18 +27,23 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Leaf<HASH_SIZE, H> {
         Self::NonEmpty(NonEmptyLeaf::new_with_hash(value, sum, node_hash))
     }
 
+    /// Returns the hash of the node.
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         match self {
             Self::NonEmpty(leaf) => leaf.hash(),
             Self::Empty(leaf) => leaf.hash(),
         }
     }
+
+    /// Returns the sum of the node.
     pub fn sum(&self) -> Sum {
         match self {
             Self::NonEmpty(leaf) => leaf.sum(),
             Self::Empty(leaf) => leaf.sum(),
         }
     }
+
+    /// Returns the value of the node.
     pub fn value(&self) -> &[u8] {
         match self {
             Self::NonEmpty(leaf) => leaf.value(),
@@ -103,9 +108,13 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> NonEmptyLeaf<HASH_SIZ
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
     }
+
+    /// Returns the sum of the node.
     pub fn sum(&self) -> Sum {
         self.sum
     }
+
+    /// Returns the value of the node.
     pub fn value(&self) -> &[u8] {
         &self.value
     }

@@ -86,13 +86,20 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         path: &[u8; HASH_SIZE],
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>, &Node<HASH_SIZE, H>),
     ) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
+        // Start from the root node
         let mut current = Node::Branch(self.db.get_root_node().ok_or(TreeError::NodeNotFound)?);
         for i in 0..Self::max_levels() {
+            // Get the children of the current node
             let (left, right) = self.db.get_children(i, current.hash())?;
+            // Order the children based on the path
             let (mut next, mut sibling) = Self::step_order(i, path, left, right);
             match next {
+                // If the next node is a compact leaf we can extract the branches
+                // on the path to the leaf.
                 Node::Compact(compact) => {
                     next = compact.extract(i);
+                    // If the sibling is also a compact leaf we can extract the branches
+                    // on the path to the sibling.
                     if let Node::Compact(comp_sibling) = sibling {
                         sibling = comp_sibling.extract(i);
                     }
@@ -100,8 +107,12 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                     // can continue the search for the leaf matching the
                     // passed key.
                     for j in i..Self::max_levels() {
+                        // Call the callback for each level
                         for_each(j, &next, &sibling, &current);
+                        // Update the current node
                         current = next.clone();
+                        // If we're not at the last level we can continue
+                        // walking down.
                         if j < Self::max_levels() - 1 {
                             // Since we have all the branches we
                             // need extracted already we can just
@@ -110,6 +121,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                                 Node::Branch(b) => b,
                                 _ => return Err(TreeError::ExpectedBranch),
                             };
+                            // Get the next and sibling nodes
                             let (n, s) = Self::step_order(
                                 j + 1,
                                 path,
@@ -120,17 +132,23 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                             sibling = s;
                         }
                     }
+                    // Return the leaf node
                     let Node::Leaf(leaf) = current else {
                         return Err(TreeError::ExpectedLeaf);
                     };
                     return Ok(leaf);
                 }
+                // If the next node is not a compact leaf we can continue
+                // walking down.
                 _ => {
+                    // Call the callback for each level
                     for_each(i, &next, &sibling, &current);
+                    // Update the current node
                     current = next;
                 }
             }
         }
+        // Return the leaf node
         let Node::Leaf(leaf) = current else {
             return Err(TreeError::ExpectedLeaf);
         };
@@ -160,6 +178,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
     ) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
         // Find the common prefix first
         let mut i = 0;
+        // As long as the key bits are the same we can continue
         while i < Self::max_levels() && bit_index(i, &key1) == bit_index(i, &key2) {
             i += 1;
         }
@@ -168,8 +187,11 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         // a newly created branch
         let node1 = CompactLeaf::new(i + 1, key1, leaf1.clone());
         let node2 = CompactLeaf::new(i + 1, key2, leaf2.clone());
+        // Insert the leaves into the database. This is not strictly necessary but it's useful
+        // If we want to avoid inserting the same leaf twice.
         self.db.insert_leaf(leaf1)?;
         self.db.insert_leaf(leaf2)?;
+        // Insert the compacted leaves into the database
         self.db.insert_compact_leaf(node1.clone())?;
         self.db.insert_compact_leaf(node2.clone())?;
         let (left, right) = Self::step_order(i, &key1, Node::Compact(node1), Node::Compact(node2));
@@ -177,7 +199,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         self.db.insert_branch(parent.clone())?;
 
         // From here we'll walk up to the current level and create branches
-        // along the way. Optionally we could compact these branches too.
+        // along the way.
         for i in (height..i).rev() {
             let (left, right) = Self::step_order(
                 i,
@@ -205,7 +227,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         root_hash: &[u8; HASH_SIZE],
         leaf: Leaf<HASH_SIZE, H>,
     ) -> Result<Branch<HASH_SIZE, H>, TreeError<DbError>> {
+        // Get the children of the current node
         let (left, right) = self.db.get_children(height, *root_hash)?;
+        // Order the children based on the path
         let is_left = bit_index(height, key) == 0;
         let (next, sibling) = if is_left {
             (left, right)
@@ -216,6 +240,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         let next_height = height + 1;
 
         let new_node = match next {
+
             Node::Branch(node) => {
                 if node.hash() == self.db.empty_tree()[next_height].hash() {
                     // This is an empty subtree, so we can just walk up
@@ -306,6 +331,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         key: [u8; HASH_SIZE],
         leaf: Leaf<HASH_SIZE, H>,
     ) -> Result<(), TreeError<DbError>> {
+        // Get the root node
         let root = if let Some(branch) = self.db.get_root_node() {
             branch
         } else {
@@ -344,14 +370,25 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         }
     }
 
+    /// Returns the merkle proof for the given key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key of the node to get the proof for
+    ///
+    /// # Returns
+    ///
+    /// Returns the merkle proof for the given key
     pub fn merkle_proof(
         &self,
         key: [u8; HASH_SIZE],
     ) -> Result<Vec<Node<HASH_SIZE, H>>, TreeError<DbError>> {
         let mut proof = Vec::with_capacity(Self::max_levels());
+        // Walk down the tree and collect the siblings
         self.walk_down(&key, |_, _next, sibling, _| {
             proof.push(sibling.clone());
         })?;
+        // Reverse the proof to get the correct order
         proof.reverse();
         Ok(proof)
     }

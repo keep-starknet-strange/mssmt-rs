@@ -34,6 +34,7 @@ pub fn walk_up<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>(
     let mut current = Arc::new(Node::Leaf(start));
     for i in (0..MSSMT::<HASH_SIZE, H, DbError>::max_height()).rev() {
         let sibling = siblings[MSSMT::<HASH_SIZE, H, DbError>::max_height() - 1 - i].clone();
+        // order the children based on the path
         let parent = if bit_index(i, &key) == 0 {
             Node::Branch(Branch::new_with_arc_children(
                 current.clone(),
@@ -55,18 +56,32 @@ pub fn walk_up<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>(
     }
 }
 
+/// Verify a merkle proof for a given key.
+///
+/// # Arguments
+///
+/// * `key` - The key of the node to verify the proof for
+/// * `leaf` - The leaf node to verify the proof for
+/// * `proof` - The proof to verify
+/// * `root` - The expected root of the tree
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the proof is valid, otherwise returns an error.
 pub fn verify_merkle_proof<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>(
     key: [u8; HASH_SIZE],
     leaf: Leaf<HASH_SIZE, H>,
     proof: Vec<Node<HASH_SIZE, H>>,
     root: Branch<HASH_SIZE, H>,
 ) -> Result<(), TreeError<DbError>> {
+    // Compute the root from the leaf and the proof
     let got_root = walk_up(
         key,
         leaf,
         proof.into_iter().map(Arc::new).collect(),
         |_, _, _, _| {},
     )?;
+    // Check if the computed root matches the expected root
     if got_root.hash() == root.hash() {
         Ok(())
     } else {

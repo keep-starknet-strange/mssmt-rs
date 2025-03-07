@@ -29,6 +29,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> EmptyLeaf<HASH_SIZE, 
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
     }
+
+    /// Returns the sum of the node.
     pub fn sum(&self) -> Sum {
         0
     }

@@ -101,6 +101,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Node<HASH_SIZE, H> {
     pub fn new_leaf(value: Vec<u8>, sum: Sum) -> Self {
         Self::Leaf(Leaf::<HASH_SIZE, H>::new(value, sum))
     }
+    /// Creates a [`Node::Leaf(Leaf::Empty(EmptyLeaf))`]
     pub fn new_empty_leaf() -> Self {
         Self::Leaf(Leaf::<HASH_SIZE, H>::Empty(EmptyLeaf::<HASH_SIZE, H>::new()))
     }
@@ -159,7 +160,7 @@ mod test {
         let leaf = Node::<32, Sha256>::new_leaf(vec![1, 2, 3], 1);
         assert_eq!(format!("{}", leaf), "Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, value: [1, 2, 3] }");
         let branch = Node::<32, Sha256>::new_branch(leaf.clone(), leaf.clone());
-        assert_eq!(format!("{}", branch), "Branch { sum: 2, hash: 8ddaeb6bfdb6365fa5ec597b706b71ab8cf3bfca3a36d66493fc790aeac2d157 }");
+        assert_eq!(format!("{}", branch), "Branch { sum: 2, hash: 8ddaeb6bfdb6365fa5ec597b706b71ab8cf3bfca3a36d66493fc790aeac2d157, left_hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, right_hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d }");
         let compact = Node::<32, Sha256>::Compact(CompactLeaf::<32, Sha256>::new(
             1,
             hex!("8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d"),

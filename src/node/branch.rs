@@ -5,7 +5,7 @@ use super::Node;
 use super::{Hasher, Sum};
 
 /// A branch is a node that has exactly 2 children. Those children can either be
-/// empty leaves or regular leaves.
+/// any type of [`Node`].
 /// Those nodes hold the sum of all their descendants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Branch<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
@@ -38,6 +38,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> 
         }
     }
 
+    /// Creates a new [`Branch`] with the provided children.
     pub fn new_with_arc_children(
         left: Arc<Node<HASH_SIZE, H>>,
         right: Arc<Node<HASH_SIZE, H>>,
@@ -91,6 +92,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Branch<HASH_SIZE, H> 
         self.node_hash
     }
 
+    /// Returns the sum of the node.
     pub fn sum(&self) -> Sum {
         self.sum
     }
@@ -114,9 +116,11 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> Display for Branch<HA
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Branch {{ sum: {}, hash: {} }}",
+            "Branch {{ sum: {}, hash: {}, left_hash: {}, right_hash: {} }}",
             self.sum(),
-            hex::encode(self.hash().as_slice())
+            hex::encode(self.hash().as_slice()),
+            hex::encode(self.left().hash().as_slice()),
+            hex::encode(self.right().hash().as_slice())
         )
     }
 }
@@ -184,7 +188,10 @@ mod test {
             Node::Leaf(Leaf::<32, Sha256>::new(vec![1, 2, 3], 1)),
             Node::Leaf(Leaf::<32, Sha256>::new(vec![4, 5, 6], 2)),
         );
-        assert_eq!(format!("{}", branch), "Branch { sum: 3, hash: c3171e69d789087eea2e9a1f0a7cb0068421e5af3727455ea5ec24ef764184a6 }");
+        assert_eq!(
+            format!("{}", branch),
+            "Branch { sum: 3, hash: c3171e69d789087eea2e9a1f0a7cb0068421e5af3727455ea5ec24ef764184a6, left_hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, right_hash: bf0780e5687c48daf1dc427a943b46d944e6e4b0eb556c3731fc6e7fadad192d }"
+        );
     }
 
     #[test]

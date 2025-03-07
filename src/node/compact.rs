@@ -7,6 +7,9 @@ use super::Hasher;
 use super::Node;
 use crate::tree::bit_index;
 
+/// A compact leaf is a leaf doesn't require all the empty parts of the path to be inserted.
+/// When required we can extract all the branches on that path.
+/// The node hash is the hash of the node at the top of the path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompactLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     node_hash: [u8; HASH_SIZE],
@@ -15,18 +18,23 @@ pub struct CompactLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
 }
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE, H> {
+    /// Creates a new compact leaf.
     pub fn new(height: usize, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Self {
+        // Walk up the path from the leaf to the top of the path
         let mut current = Node::Leaf(leaf.clone());
         let empty_tree = EmptyTree::<HASH_SIZE, H>::empty_tree();
 
+        // Start from the last height of the tree (the leaf) and walk up to the `height` required.
+        // This height is the last bit that is common with another leaf.
         for i in (height..HASH_SIZE * 8).rev() {
+            // Construct all the branches on the path to the height.
             if bit_index(i, &key) == 0 {
                 current = Node::new_branch(current, empty_tree[i + 1].clone());
             } else {
                 current = Node::new_branch(empty_tree[i + 1].clone(), current);
             }
         }
-
+        // Return the compact leaf with the node hash, leaf and key.
         Self {
             node_hash: current.hash(),
             leaf,
@@ -47,18 +55,23 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE
             key,
         }
     }
+    /// Returns the hash of the node at the top of the path.
     pub fn hash(&self) -> [u8; HASH_SIZE] {
         self.node_hash
     }
+    /// Returns the leaf of the compact leaf.
     pub fn leaf(&self) -> &Leaf<HASH_SIZE, H> {
         &self.leaf
     }
+    /// Returns the key of the compact leaf.
     pub fn key(&self) -> &[u8; HASH_SIZE] {
         &self.key
     }
+    /// Returns the sum of the leaf.
     pub fn sum(&self) -> u64 {
         self.leaf.sum()
     }
+    /// Extracts the branches on the path to the leaf.
     pub fn extract(&self, height: usize) -> Node<HASH_SIZE, H> {
         let mut current = Node::Leaf(self.leaf.clone());
         let empty_tree = EmptyTree::<HASH_SIZE, H>::empty_tree();
