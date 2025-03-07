@@ -6,7 +6,7 @@
 //! - Getting the root hash
 //! - Verifying merkle proofs
 
-use merkle_sum_sparse_tree::{verify_merkle_proof, Leaf, MemoryDb, TreeError, MSSMT};
+use mssmt::{verify_merkle_proof, Leaf, MemoryDb, TreeError, MSSMT};
 use sha2::Sha256;
 
 fn main() {

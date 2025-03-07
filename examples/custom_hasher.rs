@@ -5,7 +5,7 @@
 //! - Using it with the tree
 //! - Basic tree operations with the custom hasher
 
-use merkle_sum_sparse_tree::{Hasher, Leaf, MemoryDb, MSSMT};
+use mssmt::{Hasher, Leaf, MemoryDb, MSSMT};
 use sha2::{Digest, Sha256};
 
 // Custom hasher that uses SHA256 but adds a prefix to the input

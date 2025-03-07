@@ -6,8 +6,8 @@
 //! - Memory efficiency compared to regular tree
 //! - Verifying merkle proofs
 
-use merkle_sum_sparse_tree::{verify_merkle_proof, TreeError};
-use merkle_sum_sparse_tree::{CompactMSSMT, Leaf, MemoryDb, MSSMT};
+use mssmt::{verify_merkle_proof, TreeError};
+use mssmt::{CompactMSSMT, Leaf, MemoryDb, MSSMT};
 use sha2::Sha256;
 
 fn main() {

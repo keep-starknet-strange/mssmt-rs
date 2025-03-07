@@ -1,6 +1,6 @@
 [package]
-name = "merkle-sum-sparse-tree"
-version = "0.1.0"
+name = "mssmt"
+version = "0.0.4"
 edition = "2021"
 authors = ["0xLucqs"]
 description = "A Rust implementation of the Merkle Sum Sparse Merkle Tree (MSSMT)"
