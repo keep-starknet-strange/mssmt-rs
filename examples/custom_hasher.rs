@@ -25,7 +25,7 @@ impl Hasher<32> for PrefixedSha256 {
 fn main() {
     // Create a new tree with our custom hasher
     let db = Box::new(MemoryDb::<32, PrefixedSha256>::new());
-    let mut tree = MSSMT::<32, PrefixedSha256, ()>::new(db).unwrap();
+    let mut tree = MSSMT::<32, PrefixedSha256, ()>::new(db);
 
     // Insert a leaf
     let prefixed_leaf = Leaf::new(vec![1, 2, 3], 100);
@@ -37,7 +37,7 @@ fn main() {
 
     // Compare with standard SHA256
     let standard_db = Box::new(MemoryDb::<32, Sha256>::new());
-    let mut standard_tree = MSSMT::<32, Sha256, ()>::new(standard_db).unwrap();
+    let mut standard_tree = MSSMT::<32, Sha256, ()>::new(standard_db);
     let standard_leaf = Leaf::new(vec![1, 2, 3], 100);
     standard_tree.insert([1; 32], standard_leaf).unwrap();
     let standard_root = standard_tree.root().unwrap();

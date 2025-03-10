@@ -13,8 +13,8 @@ use sha2::Sha256;
 fn main() {
     // Create a new compact tree with 32-byte hashes using SHA256
     let db = Box::new(MemoryDb::<32, Sha256>::new());
-    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(db.clone()).unwrap();
-    let mut regular_tree = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(db.clone());
+    let mut regular_tree = MSSMT::<32, Sha256, ()>::new(db);
     // Insert some leaves with different values and sums
     let leaf1 = Leaf::new(vec![1, 2, 3], 100);
     let leaf2 = Leaf::new(vec![4, 5, 6], 200);

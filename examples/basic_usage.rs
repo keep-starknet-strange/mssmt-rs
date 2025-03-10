@@ -12,7 +12,7 @@ use sha2::Sha256;
 fn main() {
     // Create a new tree with 32-byte hashes using SHA256
     let db = Box::new(MemoryDb::<32, Sha256>::new());
-    let mut tree = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+    let mut tree = MSSMT::<32, Sha256, ()>::new(db);
 
     // Insert some leaves with different values and sums
     let leaf1 = Leaf::new(vec![1, 2, 3], 100);

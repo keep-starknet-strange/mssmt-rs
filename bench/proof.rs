@@ -29,8 +29,8 @@ fn setup_trees(
     let regular_db = Box::new(MemoryDb::<32, Sha256>::new());
     let compact_db = Box::new(MemoryDb::<32, Sha256>::new());
 
-    let mut regular_tree = MSSMT::<32, Sha256, ()>::new(regular_db).unwrap();
-    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(compact_db).unwrap();
+    let mut regular_tree = MSSMT::<32, Sha256, ()>::new(regular_db);
+    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(compact_db);
 
     let mut keys = Vec::with_capacity(num_leaves);
 

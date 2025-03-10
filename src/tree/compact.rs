@@ -34,13 +34,11 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
     CompactMSSMT<HASH_SIZE, H, DbError>
 {
     /// Creates a new empty compact MS-SMT with the given database backend.
-    pub fn new(
-        db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>,
-    ) -> Result<Self, TreeError<DbError>> {
-        Ok(Self {
+    pub fn new(db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>) -> Self {
+        Self {
             db,
             _phantom: PhantomData,
-        })
+        }
     }
 
     /// Returns the maximum number of levels in the tree (HASH_SIZE * 8)
@@ -403,7 +401,7 @@ mod test {
     #[test]
     fn test_compact_mssmt_new() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
-        let compact_mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let compact_mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         assert_eq!(
             compact_mssmt.root().unwrap().hash(),
             compact_mssmt.db().empty_tree()[0].hash()
@@ -413,7 +411,7 @@ mod test {
     #[test]
     fn test_compact_mssmt_sum_overflow() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
-        let mut compact_mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let mut compact_mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         let leaf = Leaf::new(vec![1; 32], u64::MAX);
         compact_mssmt
             .insert(
@@ -432,7 +430,7 @@ mod test {
     #[test]
     fn test_mssmt_merkle_proof() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
-        let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
         mssmt.insert([0; 32], leaf.clone()).unwrap();
@@ -444,7 +442,7 @@ mod test {
     #[test]
     fn test_mssmt_merkle_proof_invalid() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
-        let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
         mssmt.insert([0; 32], leaf.clone()).unwrap();
