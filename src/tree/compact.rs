@@ -436,7 +436,7 @@ mod test {
         mssmt.insert([0; 32], leaf.clone()).unwrap();
         let proof = mssmt.merkle_proof([0; 32]).unwrap();
         let root = mssmt.root().unwrap();
-        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap();
+        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap();
     }
 
     #[test]
@@ -449,7 +449,7 @@ mod test {
         let proof = mssmt.merkle_proof([1; 32]).unwrap();
         let root = mssmt.root().unwrap();
         assert_eq!(
-            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap_err(),
+            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap_err(),
             TreeError::InvalidMerkleProof
         );
     }

@@ -39,7 +39,7 @@ fn main() {
     println!("Merkle proof length: {}", proof.len());
 
     // Verify the proof
-    let result: Result<(), TreeError<()>> = verify_merkle_proof([1; 32], leaf1, proof, root);
+    let result: Result<(), TreeError<()>> = verify_merkle_proof([1; 32], leaf1, proof, root.hash());
     println!("Proof verification: {}", result.is_ok());
 
     // Demonstrate memory efficiency

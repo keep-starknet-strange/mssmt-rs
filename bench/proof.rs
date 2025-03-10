@@ -109,7 +109,7 @@ fn bench_proof_verification(c: &mut Criterion) {
                     *key,
                     regular_leaf,
                     proof.clone(),
-                    regular_tree.root().unwrap(),
+                    regular_tree.root().unwrap().hash(),
                 ))
                 .unwrap();
             }
@@ -128,7 +128,7 @@ fn bench_proof_verification(c: &mut Criterion) {
                     *key,
                     compact_leaf,
                     proof.clone(),
-                    compact_tree.root().unwrap(),
+                    compact_tree.root().unwrap().hash(),
                 ))
                 .unwrap();
             }
