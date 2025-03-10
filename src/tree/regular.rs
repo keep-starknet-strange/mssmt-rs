@@ -29,17 +29,11 @@ pub fn bit_index(index: usize, key: &[u8]) -> u8 {
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_SIZE, H, DbError> {
     /// Creates a new mssmt. This will build an empty tree which will involve a lot of hashing.
-    pub fn new(
-        mut db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>,
-    ) -> Result<Self, TreeError<DbError>> {
-        let Node::Branch(branch) = db.empty_tree().as_ref()[0].clone() else {
-            unreachable!("Invalid empty tree. The root node should always be a branch.");
-        };
-        db.update_root(branch)?;
-        Ok(Self {
+    pub fn new(db: Box<dyn Db<HASH_SIZE, H, DbError = DbError>>) -> Self {
+        Self {
             db,
             _phantom: PhantomData,
-        })
+        }
     }
     pub fn db(&self) -> &dyn Db<HASH_SIZE, H, DbError = DbError> {
         self.db.as_ref()
@@ -157,7 +151,7 @@ mod test {
     #[test]
     fn test_mssmt_new() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
-        let mssmt = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let mssmt = MSSMT::<32, Sha256, ()>::new(db);
         assert_eq!(
             mssmt.root().unwrap().hash(),
             mssmt.db().empty_tree()[0].hash()
@@ -167,26 +161,26 @@ mod test {
     #[test]
     fn test_mssmt_merkle_proof() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
-        let mut mssmt = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let mut mssmt = MSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
         mssmt.insert([0; 32], leaf.clone()).unwrap();
         let proof = mssmt.merkle_proof([0; 32]).unwrap();
         let root = mssmt.root().unwrap();
-        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap();
+        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap();
     }
 
     #[test]
     fn test_mssmt_merkle_proof_invalid() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
-        let mut mssmt = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+        let mut mssmt = MSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
         mssmt.insert([0; 32], leaf.clone()).unwrap();
         let proof = mssmt.merkle_proof([1; 32]).unwrap();
         let root = mssmt.root().unwrap();
         assert_eq!(
-            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root).unwrap_err(),
+            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap_err(),
             TreeError::InvalidMerkleProof
         );
     }

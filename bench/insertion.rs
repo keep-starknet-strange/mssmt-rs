@@ -25,7 +25,7 @@ fn bench_insertion(c: &mut Criterion) {
     group.bench_function("Regular Tree", |b| {
         b.iter(|| {
             let db = Box::new(MemoryDb::<32, Sha256>::new());
-            let mut tree = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+            let mut tree = MSSMT::<32, Sha256, ()>::new(db);
             for _ in 0..100 {
                 let key = generate_random_key();
                 let leaf = generate_random_leaf();
@@ -38,7 +38,7 @@ fn bench_insertion(c: &mut Criterion) {
     group.bench_function("Compact Tree", |b| {
         b.iter(|| {
             let db = Box::new(MemoryDb::<32, Sha256>::new());
-            let mut tree = CompactMSSMT::<32, Sha256, ()>::new(db).unwrap();
+            let mut tree = CompactMSSMT::<32, Sha256, ()>::new(db);
             for _ in 0..100 {
                 let key = generate_random_key();
                 let leaf = generate_random_leaf();

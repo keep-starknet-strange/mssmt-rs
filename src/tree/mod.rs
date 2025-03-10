@@ -72,7 +72,7 @@ pub fn verify_merkle_proof<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone,
     key: [u8; HASH_SIZE],
     leaf: Leaf<HASH_SIZE, H>,
     proof: Vec<Node<HASH_SIZE, H>>,
-    root: Branch<HASH_SIZE, H>,
+    root_hash: [u8; HASH_SIZE],
 ) -> Result<(), TreeError<DbError>> {
     // Compute the root from the leaf and the proof
     let got_root = walk_up(
@@ -82,7 +82,7 @@ pub fn verify_merkle_proof<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone,
         |_, _, _, _| {},
     )?;
     // Check if the computed root matches the expected root
-    if got_root.hash() == root.hash() {
+    if got_root.hash() == root_hash {
         Ok(())
     } else {
         Err(TreeError::InvalidMerkleProof)
