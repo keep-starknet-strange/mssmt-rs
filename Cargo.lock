@@ -328,7 +328,6 @@ dependencies = [
  "hex-literal",
  "rand",
  "sha2",
- "typenum",
 ]
 
 [[package]]

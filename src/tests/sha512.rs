@@ -1,7 +1,5 @@
-//! Tests for the Merkle Sum Sparse Merkle Tree implementation
-
 use hex_literal::hex;
-use sha2::Sha256;
+use sha2::{Digest, Sha512};
 
 use crate::{
     node::{Branch, CompactLeaf, Hasher, Leaf, Node},
@@ -9,35 +7,43 @@ use crate::{
     Db, EmptyTree, MemoryDb, ThreadSafe,
 };
 
+impl Hasher<64> for Sha512 {
+    fn hash(data: &[u8]) -> [u8; 64] {
+        let mut hasher = Sha512::new();
+        hasher.update(data);
+        hasher.finalize().into()
+    }
+}
+
 #[test]
 fn test_empty_tree() {
-    let tree = MSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
-    let compact_tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
+    let tree = MSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
+    let compact_tree = CompactMSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
     assert_eq!(
         tree.root().unwrap().hash(),
-        hex!("b1e8e8f2dc3b266452988cfe169aa73be25405eeead02ab5dd6b3c6fd0ca8d67")
+        hex!("45cf5fc060eace3bfd5f51bcc6dc6fa4c3a32c0fbada3e544a842a8ce8a5416c35345b878f3a11d9fef0f17ad285971426025664c3923a9cc0d11d2363e41975")
     );
     assert_eq!(
         compact_tree.root().unwrap().hash(),
-        hex!("b1e8e8f2dc3b266452988cfe169aa73be25405eeead02ab5dd6b3c6fd0ca8d67")
+        hex!("45cf5fc060eace3bfd5f51bcc6dc6fa4c3a32c0fbada3e544a842a8ce8a5416c35345b878f3a11d9fef0f17ad285971426025664c3923a9cc0d11d2363e41975")
     );
     assert_eq!(
         tree.db().empty_tree().as_ref()[0].hash(),
-        hex!("b1e8e8f2dc3b266452988cfe169aa73be25405eeead02ab5dd6b3c6fd0ca8d67")
+        hex!("45cf5fc060eace3bfd5f51bcc6dc6fa4c3a32c0fbada3e544a842a8ce8a5416c35345b878f3a11d9fef0f17ad285971426025664c3923a9cc0d11d2363e41975")
     );
     assert_eq!(
         compact_tree.db().empty_tree().as_ref()[0].hash(),
-        hex!("b1e8e8f2dc3b266452988cfe169aa73be25405eeead02ab5dd6b3c6fd0ca8d67")
+        hex!("45cf5fc060eace3bfd5f51bcc6dc6fa4c3a32c0fbada3e544a842a8ce8a5416c35345b878f3a11d9fef0f17ad285971426025664c3923a9cc0d11d2363e41975")
     );
 }
 
 #[test]
 fn test_leaves_insertion() {
-    let leaf1 = Leaf::new([1; 32].to_vec(), 1);
-    let leaf2 = Leaf::new([2; 32].to_vec(), 2);
-    let leaf3 = Leaf::new([3; 32].to_vec(), 3);
+    let leaf1 = Leaf::<64, Sha512>::new([1; 64].to_vec(), 1);
+    let leaf2 = Leaf::<64, Sha512>::new([2; 64].to_vec(), 2);
+    let leaf3 = Leaf::<64, Sha512>::new([3; 64].to_vec(), 3);
 
-    let leaf4 = Leaf::new(
+    let leaf4 = Leaf::<64, Sha512>::new(
         vec![
             2, 140, 120, 40, 192, 9, 98, 114, 244, 120, 64, 72, 171, 79, 80, 112, 181, 15, 155, 49,
             210, 19, 22, 216, 74, 168, 143, 149, 16, 184, 63, 25, 192,
@@ -46,50 +52,49 @@ fn test_leaves_insertion() {
     );
     let key4 = [
         177_u8, 231, 231, 200, 71, 83, 63, 150, 221, 247, 213, 231, 188, 27, 190, 148, 112, 218,
-        129, 131, 93, 195, 197, 44, 143, 203, 191, 17, 154, 100, 103, 100,
+        129, 131, 93, 195, 197, 44, 143, 203, 191, 17, 154, 100, 103, 100, 177_u8, 231, 231, 200,
+        71, 83, 63, 150, 221, 247, 213, 231, 188, 27, 190, 148, 112, 218, 129, 131, 93, 195, 197,
+        44, 143, 203, 191, 17, 154, 100, 103, 100,
     ];
     assert_eq!(
         leaf4.hash(),
-        [
-            57, 69, 34, 179, 59, 126, 69, 176, 23, 250, 43, 62, 92, 40, 140, 134, 218, 152, 51,
-            247, 13, 206, 24, 141, 226, 105, 72, 134, 21, 60, 103, 103
-        ]
+        hex!("bd6fe6e7d33ee372467e746e21672708ab7e4982354e44bca98f11763f1fcb0fb1f7b112259bc297d1c15f5e42c6ee87915eb469284a2b0b3d1d32ecef3158a2")
     );
 
-    let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
-    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
+    let mut tree = MSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
+    let mut compact_tree = CompactMSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
 
-    tree.insert([1; 32], leaf1.clone()).unwrap();
-    compact_tree.insert([1; 32], leaf1.clone()).unwrap();
+    tree.insert([1; 64], leaf1.clone()).unwrap();
+    compact_tree.insert([1; 64], leaf1.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
-        hex!("b46e250d98aa9917abdd1012f72c03ab9a59f6de5253d963a99b7d69c2eca3da")
+        hex!("19ed12c23395e30b128ac17e42728e0af08b2d15c9c2cea7950ef4be3547901562c5c2d1a4ef8c578bffcec8262b067c13dfe24c078f6a237f50eeb3242b2c00")
     );
     assert_eq!(
         compact_tree.root().unwrap().hash(),
-        hex!("b46e250d98aa9917abdd1012f72c03ab9a59f6de5253d963a99b7d69c2eca3da")
+        hex!("19ed12c23395e30b128ac17e42728e0af08b2d15c9c2cea7950ef4be3547901562c5c2d1a4ef8c578bffcec8262b067c13dfe24c078f6a237f50eeb3242b2c00")
     );
 
-    tree.insert([2; 32], leaf2.clone()).unwrap();
-    compact_tree.insert([2; 32], leaf2.clone()).unwrap();
+    tree.insert([2; 64], leaf2.clone()).unwrap();
+    compact_tree.insert([2; 64], leaf2.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
-        hex!("dc5ab9a0f0b56e215b550b2946cdc72aae2b013aa4790ee4d809a9b43cf2d9aa")
+        hex!("ddeced697e31a7c68ffe385bfc6b959099eb9b52a1512d11ce4b96c007c08cb5b743f2de5dd64719e968534c249a322b91486fdc697372900485fd18a8d7996c")
     );
     assert_eq!(
         compact_tree.root().unwrap().hash(),
-        hex!("dc5ab9a0f0b56e215b550b2946cdc72aae2b013aa4790ee4d809a9b43cf2d9aa")
+        hex!("ddeced697e31a7c68ffe385bfc6b959099eb9b52a1512d11ce4b96c007c08cb5b743f2de5dd64719e968534c249a322b91486fdc697372900485fd18a8d7996c")
     );
 
-    tree.insert([3; 32], leaf3.clone()).unwrap();
-    compact_tree.insert([3; 32], leaf3.clone()).unwrap();
+    tree.insert([3; 64], leaf3.clone()).unwrap();
+    compact_tree.insert([3; 64], leaf3.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
-        hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
+        hex!("f449d7cbc8783352fcd5f7d33496a32cab342d455d5be026794c19849027db3f893f30a017a63002f36fa97cfbfc0039ce3c660652a89e681cf2ba1ef2670d22")
     );
     assert_eq!(
         compact_tree.root().unwrap().hash(),
-        hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
+        hex!("f449d7cbc8783352fcd5f7d33496a32cab342d455d5be026794c19849027db3f893f30a017a63002f36fa97cfbfc0039ce3c660652a89e681cf2ba1ef2670d22")
     );
     tree.insert(key4, leaf4.clone()).unwrap();
     compact_tree.insert(key4, leaf4.clone()).unwrap();
@@ -102,25 +107,26 @@ fn test_leaves_insertion() {
 
 #[test]
 fn test_history_independant() {
-    let leaf1 = Leaf::new([1; 32].to_vec(), 1);
-    let leaf2 = Leaf::new([2; 32].to_vec(), 2);
-    let leaf3 = Leaf::new([3; 32].to_vec(), 3);
+    let leaf1 = Leaf::new([1; 64].to_vec(), 1);
+    let leaf2 = Leaf::new([2; 64].to_vec(), 2);
+    let leaf3 = Leaf::new([3; 64].to_vec(), 3);
 
-    let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
-    let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
-    tree.insert([1; 32], leaf1.clone()).unwrap();
-    tree.insert([3; 32], leaf3.clone()).unwrap();
-    tree.insert([2; 32], leaf2.clone()).unwrap();
-    compact_tree.insert([3; 32], leaf3.clone()).unwrap();
-    compact_tree.insert([2; 32], leaf2.clone()).unwrap();
-    compact_tree.insert([1; 32], leaf1.clone()).unwrap();
+    let mut tree = MSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
+    let mut compact_tree = CompactMSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
+    tree.insert([1; 64], leaf1.clone()).unwrap();
+    tree.insert([3; 64], leaf3.clone()).unwrap();
+    tree.insert([2; 64], leaf2.clone()).unwrap();
+    compact_tree.insert([3; 64], leaf3.clone()).unwrap();
+    compact_tree.insert([2; 64], leaf2.clone()).unwrap();
+    compact_tree.insert([1; 64], leaf1.clone()).unwrap();
+
     assert_eq!(
         tree.root().unwrap().hash(),
-        hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
+        hex!("f449d7cbc8783352fcd5f7d33496a32cab342d455d5be026794c19849027db3f893f30a017a63002f36fa97cfbfc0039ce3c660652a89e681cf2ba1ef2670d22")
     );
     assert_eq!(
         compact_tree.root().unwrap().hash(),
-        hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
+        hex!("f449d7cbc8783352fcd5f7d33496a32cab342d455d5be026794c19849027db3f893f30a017a63002f36fa97cfbfc0039ce3c660652a89e681cf2ba1ef2670d22")
     );
 }
 
@@ -153,19 +159,19 @@ fn test_insertion() {
             }
         }
     }
-    let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
-    let l1 = Leaf::new([1; 32].to_vec(), 1);
-    let l2 = Leaf::new([2; 32].to_vec(), 2);
-    let l3 = Leaf::<32, Sha256>::new([3; 32].to_vec(), 3);
-    let l4 = Leaf::new([4; 32].to_vec(), 4);
+    let empty_tree = EmptyTree::<64, Sha512>::empty_tree();
+    let l1 = Leaf::new([1; 64].to_vec(), 1);
+    let l2 = Leaf::new([2; 64].to_vec(), 2);
+    let l3 = Leaf::<64, Sha512>::new([3; 64].to_vec(), 3);
+    let l4 = Leaf::new([4; 64].to_vec(), 4);
     let branch_l1_l2 = Branch::new(Node::Leaf(l1.clone()), Node::Leaf(l2.clone()));
     let branch_l3_l4 = Branch::new(Node::Leaf(l3.clone()), Node::Leaf(l4.clone()));
     let branch_l1_el = Branch::new(Node::Leaf(l1.clone()), Node::new_empty_leaf());
     let branch_el_l1 = Branch::new(Node::new_empty_leaf(), Node::Leaf(l1.clone()));
-    let k1 = [1_u8; 32];
-    let k2 = [2_u8; 32];
-    let k3 = [3_u8; 32];
-    let k4 = [4_u8; 32];
+    let k1 = [1_u8; 64];
+    let k2 = [2_u8; 64];
+    let k3 = [3_u8; 64];
+    let k4 = [4_u8; 64];
 
     let cl1 = CompactLeaf::new(100, k1, l1.clone());
     let cl2 = CompactLeaf::new(100, k2, l2.clone());
@@ -183,11 +189,11 @@ fn test_insertion() {
     //    B1  Empty
     //   /  \
     //  L1  L2
-    let root_branch = Branch::new(Node::Branch(branch_l1_l2.clone()), empty_tree[255].clone());
+    let root_branch = Branch::new(Node::Branch(branch_l1_l2.clone()), empty_tree[511].clone());
     test_children(
         vec![l1.clone(), l2.clone()],
         vec![vec![root_branch], vec![branch_l1_l2.clone()]],
-        254,
+        510,
     );
 
     //         R
@@ -195,11 +201,11 @@ fn test_insertion() {
     //  Empty    B1
     //          /  \
     //         L1  L2
-    let root_branch = Branch::new(empty_tree[255].clone(), Node::Branch(branch_l1_l2.clone()));
+    let root_branch = Branch::new(empty_tree[511].clone(), Node::Branch(branch_l1_l2.clone()));
     test_children(
         vec![l1.clone(), l2.clone()],
         vec![vec![root_branch], vec![branch_l1_l2.clone()]],
-        254,
+        510,
     );
 
     //       R
@@ -207,11 +213,11 @@ fn test_insertion() {
     //    B2  Empty
     //   /  \
     //  L1  Empty
-    let root_branch = Branch::new(Node::Branch(branch_l1_el.clone()), empty_tree[255].clone());
+    let root_branch = Branch::new(Node::Branch(branch_l1_el.clone()), empty_tree[511].clone());
     test_children(
         vec![l1.clone()],
         vec![vec![root_branch], vec![branch_l1_el.clone()]],
-        254,
+        510,
     );
 
     //         R
@@ -219,36 +225,37 @@ fn test_insertion() {
     //      B2  Empty
     //     /  \
     // Empty  L1
-    let root_branch = Branch::new(Node::Branch(branch_el_l1.clone()), empty_tree[255].clone());
+    let root_branch = Branch::new(Node::Branch(branch_el_l1.clone()), empty_tree[511].clone());
     test_children(
         vec![l1.clone()],
         vec![vec![root_branch], vec![branch_el_l1.clone()]],
-        254,
+        510,
     );
+
     //        R
     //      /  \
     //  Empty  B2
     //        /  \
     //      L1  Empty
-    //
-
-    let root_branch = Branch::new(empty_tree[255].clone(), Node::Branch(branch_l1_el.clone()));
+    let root_branch = Branch::new(empty_tree[511].clone(), Node::Branch(branch_l1_el.clone()));
     test_children(
         vec![l1.clone()],
         vec![vec![root_branch], vec![branch_l1_el.clone()]],
-        254,
+        510,
     );
+
     //         R
     //       /  \
     //   Empty  B2
     //         /  \
     //     Empty  L1
-    let root_branch = Branch::new(empty_tree[255].clone(), Node::Branch(branch_el_l1.clone()));
+    let root_branch = Branch::new(empty_tree[511].clone(), Node::Branch(branch_el_l1.clone()));
     test_children(
         vec![l1.clone()],
         vec![vec![root_branch], vec![branch_el_l1.clone()]],
-        254,
+        510,
     );
+
     //          R
     //        /   \
     //      B1     B2
@@ -264,7 +271,7 @@ fn test_insertion() {
             vec![root_branch],
             vec![branch_l1_l2.clone(), branch_l3_l4.clone()],
         ],
-        254,
+        510,
     );
 
     //             R
@@ -274,8 +281,8 @@ fn test_insertion() {
     //      B1   E E   B2
     //     / \        /  \
     //    L1 L2      L3  L4
-    let b3 = Branch::new(Node::Branch(branch_l1_l2.clone()), empty_tree[255].clone());
-    let b4 = Branch::new(empty_tree[255].clone(), Node::Branch(branch_l1_l2.clone()));
+    let b3 = Branch::new(Node::Branch(branch_l1_l2.clone()), empty_tree[511].clone());
+    let b4 = Branch::new(empty_tree[511].clone(), Node::Branch(branch_l1_l2.clone()));
     let root_branch = Branch::new(Node::Branch(b3.clone()), Node::Branch(b4.clone()));
     test_children(
         vec![l1.clone(), l2.clone(), l3.clone(), l4.clone()],
@@ -284,7 +291,7 @@ fn test_insertion() {
             vec![b3, b4],
             vec![branch_l1_l2.clone(), branch_l3_l4],
         ],
-        253,
+        509,
     );
 
     //            R

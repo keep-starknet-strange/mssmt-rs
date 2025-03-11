@@ -5,11 +5,10 @@
 //! This significantly reduces the storage requirements while maintaining the same cryptographic properties.
 
 use std::marker::PhantomData;
-use typenum::Unsigned;
 
 use crate::{
     node::{Branch, CompactLeaf, Hasher, Leaf, Node},
-    Db, EmptyLeaf, TreeError, TreeSize,
+    Db, EmptyLeaf, TreeError,
 };
 
 use super::regular::bit_index;
@@ -43,7 +42,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
 
     /// Returns the maximum number of levels in the tree (HASH_SIZE * 8)
     pub fn max_levels() -> usize {
-        TreeSize::USIZE - 1
+        HASH_SIZE * 8
     }
 
     /// Returns a reference to the underlying database.

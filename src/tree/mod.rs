@@ -6,7 +6,7 @@ use std::borrow::Borrow;
 use std::sync::Arc;
 
 pub use compact::CompactMSSMT;
-pub use empty::{EmptyTree, TreeSize};
+pub use empty::EmptyTree;
 pub use regular::bit_index;
 pub use regular::MSSMT;
 
