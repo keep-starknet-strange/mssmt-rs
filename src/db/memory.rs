@@ -1,11 +1,9 @@
 use std::{any::Any, collections::HashMap, sync::Arc};
 
-use typenum::Unsigned;
-
 use crate::{
     db::Db,
     node::{Branch, CompactLeaf, Hasher, Leaf, Node},
-    tree::{EmptyTree, TreeSize},
+    tree::EmptyTree,
     ThreadSafe, TreeError,
 };
 
@@ -15,7 +13,7 @@ pub struct MemoryDb<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
     branches: HashMap<[u8; HASH_SIZE], Branch<HASH_SIZE, H>>,
     leaves: HashMap<[u8; HASH_SIZE], Leaf<HASH_SIZE, H>>,
     compact_leaves: HashMap<[u8; HASH_SIZE], CompactLeaf<HASH_SIZE, H>>,
-    empty_tree: Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>,
+    empty_tree: Arc<Vec<Node<HASH_SIZE, H>>>,
     root: Option<Branch<HASH_SIZE, H>>,
 }
 
@@ -111,7 +109,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
         Ok(())
     }
 
-    fn empty_tree(&self) -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]> {
+    fn empty_tree(&self) -> Arc<Vec<Node<HASH_SIZE, H>>> {
         self.empty_tree.clone()
     }
 

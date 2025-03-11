@@ -5,11 +5,9 @@ mod memory;
 pub use memory::*;
 
 use std::{any::Any, sync::Arc};
-use typenum::Unsigned;
 
 use crate::{
     node::{Branch, CompactLeaf, Hasher, Leaf, Node},
-    tree::TreeSize,
     TreeError,
 };
 
@@ -59,7 +57,7 @@ pub trait Db<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone>: ThreadSafe {
     ) -> Result<(), TreeError<Self::DbError>>;
 
     /// Get the empty tree for this database
-    fn empty_tree(&self) -> Arc<[Node<HASH_SIZE, H>; TreeSize::USIZE]>;
+    fn empty_tree(&self) -> Arc<Vec<Node<HASH_SIZE, H>>>;
 
     /// Update the root node of the tree
     fn update_root(&mut self, root: Branch<HASH_SIZE, H>) -> Result<(), TreeError<Self::DbError>>;
