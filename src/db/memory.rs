@@ -121,12 +121,12 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
     }
 
     fn delete_branch(&mut self, key: &[u8; HASH_SIZE]) -> Result<(), TreeError<Self::DbError>> {
-        self.branches.remove(key).ok_or(TreeError::NodeNotFound)?;
+        self.branches.remove(key);
         Ok(())
     }
 
     fn delete_leaf(&mut self, key: &[u8; HASH_SIZE]) -> Result<(), TreeError<Self::DbError>> {
-        self.leaves.remove(key).ok_or(TreeError::NodeNotFound)?;
+        self.leaves.remove(key);
         Ok(())
     }
 
@@ -134,9 +134,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone + ThreadSafe> Db<HASH_
         &mut self,
         key: &[u8; HASH_SIZE],
     ) -> Result<(), TreeError<Self::DbError>> {
-        self.compact_leaves
-            .remove(key)
-            .ok_or(TreeError::NodeNotFound)?;
+        self.compact_leaves.remove(key);
         Ok(())
     }
 
