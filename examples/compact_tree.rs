@@ -6,7 +6,7 @@
 //! - Memory efficiency compared to regular tree
 //! - Verifying merkle proofs
 
-use mssmt::{verify_merkle_proof, TreeError};
+use mssmt::TreeError;
 use mssmt::{CompactMSSMT, Leaf, MemoryDb, MSSMT};
 use sha2::Sha256;
 
@@ -21,13 +21,13 @@ fn main() {
     let leaf3 = Leaf::new(vec![7, 8, 9], 300);
 
     // Insert leaves with different keys
-    compact_tree.insert([1; 32], leaf1.clone()).unwrap();
-    compact_tree.insert([2; 32], leaf2.clone()).unwrap();
-    compact_tree.insert([3; 32], leaf3.clone()).unwrap();
+    compact_tree.insert(&[1; 32], leaf1.clone()).unwrap();
+    compact_tree.insert(&[2; 32], leaf2.clone()).unwrap();
+    compact_tree.insert(&[3; 32], leaf3.clone()).unwrap();
 
-    regular_tree.insert([1; 32], leaf1.clone()).unwrap();
-    regular_tree.insert([2; 32], leaf2.clone()).unwrap();
-    regular_tree.insert([3; 32], leaf3.clone()).unwrap();
+    regular_tree.insert(&[1; 32], leaf1.clone()).unwrap();
+    regular_tree.insert(&[2; 32], leaf2.clone()).unwrap();
+    regular_tree.insert(&[3; 32], leaf3.clone()).unwrap();
 
     // Get the root hash
     let root = compact_tree.root().unwrap();
@@ -35,11 +35,12 @@ fn main() {
     println!("Total sum: {}", root.sum());
 
     // Get and verify a merkle proof for leaf1
-    let proof = compact_tree.merkle_proof([1; 32]).unwrap();
-    println!("Merkle proof length: {}", proof.len());
+    let proof = compact_tree.merkle_proof(&[1; 32]).unwrap();
+    println!("Merkle proof length: {}", proof.nodes().len());
 
     // Verify the proof
-    let result: Result<(), TreeError<()>> = verify_merkle_proof([1; 32], leaf1, proof, root.hash());
+    let result: Result<(), TreeError<()>> =
+        proof.verify_merkle_proof::<()>(&[1; 32], leaf1, root.hash());
     println!("Proof verification: {}", result.is_ok());
 
     // Demonstrate memory efficiency

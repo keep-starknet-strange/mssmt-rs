@@ -64,8 +64,8 @@ fn test_leaves_insertion() {
     let mut tree = MSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
     let mut compact_tree = CompactMSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
 
-    tree.insert([1; 64], leaf1.clone()).unwrap();
-    compact_tree.insert([1; 64], leaf1.clone()).unwrap();
+    tree.insert(&[1; 64], leaf1.clone()).unwrap();
+    compact_tree.insert(&[1; 64], leaf1.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
         hex!("19ed12c23395e30b128ac17e42728e0af08b2d15c9c2cea7950ef4be3547901562c5c2d1a4ef8c578bffcec8262b067c13dfe24c078f6a237f50eeb3242b2c00")
@@ -75,8 +75,8 @@ fn test_leaves_insertion() {
         hex!("19ed12c23395e30b128ac17e42728e0af08b2d15c9c2cea7950ef4be3547901562c5c2d1a4ef8c578bffcec8262b067c13dfe24c078f6a237f50eeb3242b2c00")
     );
 
-    tree.insert([2; 64], leaf2.clone()).unwrap();
-    compact_tree.insert([2; 64], leaf2.clone()).unwrap();
+    tree.insert(&[2; 64], leaf2.clone()).unwrap();
+    compact_tree.insert(&[2; 64], leaf2.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
         hex!("ddeced697e31a7c68ffe385bfc6b959099eb9b52a1512d11ce4b96c007c08cb5b743f2de5dd64719e968534c249a322b91486fdc697372900485fd18a8d7996c")
@@ -86,8 +86,8 @@ fn test_leaves_insertion() {
         hex!("ddeced697e31a7c68ffe385bfc6b959099eb9b52a1512d11ce4b96c007c08cb5b743f2de5dd64719e968534c249a322b91486fdc697372900485fd18a8d7996c")
     );
 
-    tree.insert([3; 64], leaf3.clone()).unwrap();
-    compact_tree.insert([3; 64], leaf3.clone()).unwrap();
+    tree.insert(&[3; 64], leaf3.clone()).unwrap();
+    compact_tree.insert(&[3; 64], leaf3.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
         hex!("f449d7cbc8783352fcd5f7d33496a32cab342d455d5be026794c19849027db3f893f30a017a63002f36fa97cfbfc0039ce3c660652a89e681cf2ba1ef2670d22")
@@ -96,8 +96,8 @@ fn test_leaves_insertion() {
         compact_tree.root().unwrap().hash(),
         hex!("f449d7cbc8783352fcd5f7d33496a32cab342d455d5be026794c19849027db3f893f30a017a63002f36fa97cfbfc0039ce3c660652a89e681cf2ba1ef2670d22")
     );
-    tree.insert(key4, leaf4.clone()).unwrap();
-    compact_tree.insert(key4, leaf4.clone()).unwrap();
+    tree.insert(&key4, leaf4.clone()).unwrap();
+    compact_tree.insert(&key4, leaf4.clone()).unwrap();
 
     assert_eq!(
         tree.root().unwrap().hash(),
@@ -113,12 +113,12 @@ fn test_history_independant() {
 
     let mut tree = MSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
     let mut compact_tree = CompactMSSMT::<64, Sha512, ()>::new(Box::new(MemoryDb::default()));
-    tree.insert([1; 64], leaf1.clone()).unwrap();
-    tree.insert([3; 64], leaf3.clone()).unwrap();
-    tree.insert([2; 64], leaf2.clone()).unwrap();
-    compact_tree.insert([3; 64], leaf3.clone()).unwrap();
-    compact_tree.insert([2; 64], leaf2.clone()).unwrap();
-    compact_tree.insert([1; 64], leaf1.clone()).unwrap();
+    tree.insert(&[1; 64], leaf1.clone()).unwrap();
+    tree.insert(&[3; 64], leaf3.clone()).unwrap();
+    tree.insert(&[2; 64], leaf2.clone()).unwrap();
+    compact_tree.insert(&[3; 64], leaf3.clone()).unwrap();
+    compact_tree.insert(&[2; 64], leaf2.clone()).unwrap();
+    compact_tree.insert(&[1; 64], leaf1.clone()).unwrap();
 
     assert_eq!(
         tree.root().unwrap().hash(),
@@ -159,7 +159,7 @@ fn test_insertion() {
             }
         }
     }
-    let empty_tree = EmptyTree::<64, Sha512>::empty_tree();
+
     let l1 = Leaf::new([1; 64].to_vec(), 1);
     let l2 = Leaf::new([2; 64].to_vec(), 2);
     let l3 = Leaf::<64, Sha512>::new([3; 64].to_vec(), 3);
@@ -173,10 +173,12 @@ fn test_insertion() {
     let k3 = [3_u8; 64];
     let k4 = [4_u8; 64];
 
-    let cl1 = CompactLeaf::new(100, k1, l1.clone());
-    let cl2 = CompactLeaf::new(100, k2, l2.clone());
-    let cl3 = CompactLeaf::new(99, k3, l3.clone());
-    let cl4 = CompactLeaf::new(99, k4, l4.clone());
+    let empty_tree = EmptyTree::<64, Sha512>::empty_tree();
+
+    let cl1 = CompactLeaf::new(100, k1, l1.clone(), empty_tree.clone());
+    let cl2 = CompactLeaf::new(100, k2, l2.clone(), empty_tree.clone());
+    let cl3 = CompactLeaf::new(99, k3, l3.clone(), empty_tree.clone());
+    let cl4 = CompactLeaf::new(99, k4, l4.clone(), empty_tree.clone());
     let branch_cl1_cl2 = Branch::new(Node::Compact(cl1.clone()), Node::Compact(cl2.clone()));
     let branch_cl1_cl2_cl3 = Branch::new(
         Node::Branch(branch_cl1_cl2.clone()),

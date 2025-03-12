@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::sync::Arc;
 
 use crate::EmptyTree;
 
@@ -19,10 +20,14 @@ pub struct CompactLeaf<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> {
 
 impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone> CompactLeaf<HASH_SIZE, H> {
     /// Creates a new compact leaf.
-    pub fn new(height: usize, key: [u8; HASH_SIZE], leaf: Leaf<HASH_SIZE, H>) -> Self {
+    pub fn new(
+        height: usize,
+        key: [u8; HASH_SIZE],
+        leaf: Leaf<HASH_SIZE, H>,
+        empty_tree: Arc<Vec<Node<HASH_SIZE, H>>>,
+    ) -> Self {
         // Walk up the path from the leaf to the top of the path
         let mut current = Node::Leaf(leaf.clone());
-        let empty_tree = EmptyTree::<HASH_SIZE, H>::empty_tree();
 
         // Start from the last height of the tree (the leaf) and walk up to the `height` required.
         // This height is the last bit that is common with another leaf.
@@ -106,15 +111,17 @@ mod test {
     use hex_literal::hex;
     use sha2::Sha256;
 
-    use crate::{CompactLeaf, Leaf};
+    use crate::{CompactLeaf, EmptyTree, Leaf};
 
     #[test]
     fn test_compact_leaf_new() {
         let leaf = Leaf::<32, Sha256>::new(vec![1, 2, 3], 1);
+        let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
         let compact_leaf = CompactLeaf::new(
             0,
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
             leaf,
+            empty_tree,
         );
         assert_eq!(
             compact_leaf.hash(),
@@ -125,10 +132,12 @@ mod test {
     #[test]
     fn test_compact_leaf_extract_keep_sum() {
         let leaf = Leaf::<32, Sha256>::new(vec![1, 2, 3], 1);
+        let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
         let compact_leaf = CompactLeaf::new(
             0,
             hex!("0000000000000000000000000000000000000000000000000000000000000001"),
             leaf,
+            empty_tree,
         );
         let extracted = compact_leaf.extract(0);
         assert_eq!(extracted.sum(), 1);
@@ -137,10 +146,12 @@ mod test {
     #[test]
     fn test_compact_leaf_new_with_hash() {
         let leaf = Leaf::<32, Sha256>::new(vec![1, 2, 3], 1);
+        let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
         let compact_leaf = CompactLeaf::new(
             0,
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
             leaf.clone(),
+            empty_tree,
         );
         let compact_leaf = unsafe {
             CompactLeaf::new_with_hash(
@@ -158,10 +169,12 @@ mod test {
     #[test]
     fn test_compact_leaf_display() {
         let leaf = Leaf::<32, Sha256>::new(vec![1, 2, 3], 1);
+        let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
         let compact_leaf = CompactLeaf::new(
             0,
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
             leaf,
+            empty_tree,
         );
         assert_eq!(format!("{}", compact_leaf), "Compact { hash: acd89d5503896be78b9cc1162604ddd0c2a25fe77b73d2420b816b5da28e1f5d, leaf: Leaf { sum: 1, hash: 8baca94ed49fcb53307342cc10a24970c9d66309794d55af1532ba6029e7dd8d, value: [1, 2, 3] } }");
     }

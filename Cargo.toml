@@ -15,6 +15,7 @@ default = ["multi-thread"]
 multi-thread = []
 
 [dependencies]
+bitvec = "1.0.1"
 hex = "0.4.3"
 sha2 = "0.10.8"
 
@@ -22,6 +23,8 @@ sha2 = "0.10.8"
 criterion = "0.5"
 hex-literal = "0.4.1"
 rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [[example]]
 name = "basic_usage"

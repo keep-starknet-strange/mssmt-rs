@@ -12,12 +12,13 @@
 mod db;
 mod error;
 mod node;
+mod proof;
 mod tree;
 
 pub use db::{Db, MemoryDb, ThreadSafe};
 pub use error::TreeError;
 pub use node::{Branch, CompactLeaf, ComputedNode, EmptyLeaf, Hasher, Leaf, Node};
-pub use tree::{verify_merkle_proof, walk_up, CompactMSSMT, EmptyTree, MSSMT};
-
+pub use proof::{CompressedProof, Proof};
+pub use tree::{walk_up, CompactMSSMT, EmptyTree, MSSMT};
 #[cfg(test)]
 mod tests;
