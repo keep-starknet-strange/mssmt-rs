@@ -13,17 +13,19 @@ A Rust implementation of the Merkle Sum Sparse Merkle Tree (MSSMT) based on [Lig
 ## Overview
 
 The Merkle Sum Sparse Merkle Tree combines the properties of both Merkle Sum Trees and Sparse Merkle Trees, providing:
-- Efficient sparse storage
+- Efficient sparse storage with compact proofs
 - Sum aggregation at each level
 - Cryptographic verification
 - Flexible storage backend through the `Db` trait
+- Support for both regular and compact tree implementations
 
 ## Features
 
 - Generic over hash size and hasher type
 - Thread-safe with optional multi-threading support
 - Memory-efficient storage with compact leaf nodes
-- Comprehensive test coverage
+- Proof compression and decompression
+- Comprehensive test coverage including BIP test vectors
 - CI/CD pipeline with code coverage reporting
 
 ## Usage
@@ -32,25 +34,47 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merkle-sum-sparse-merkle-tree = "0.1.0"
+merkle-sum-sparse-merkle-tree = "0.6.0"
 ```
 
-Basic example:
+Basic example using regular tree:
 
 ```rust
-use merkle_sum_sparse_merkle_tree::{MSSMT, MemoryDb};
+use merkle_sum_sparse_merkle_tree::{MSSMT, MemoryDb, Leaf};
 use sha2::Sha256;
 
 // Create a new tree with 32-byte hashes using SHA256
 let db = Box::new(MemoryDb::<32, Sha256>::new());
-let mut tree = MSSMT::<32, Sha256, ()>::new(db).unwrap();
+let mut tree = MSSMT::<32, Sha256, ()>::new(db);
 
 // Insert a leaf
 let leaf = Leaf::new(vec![1, 2, 3], 100);
-tree.insert([1; 32], leaf).unwrap();
+tree.insert(&[1; 32], leaf).unwrap();
 
-// Get the root hash
+// Get and verify a merkle proof
+let proof = tree.merkle_proof(&[1; 32]).unwrap();
 let root = tree.root().unwrap();
+proof.verify_merkle_proof(&[1; 32], leaf, root.hash()).unwrap();
+```
+
+Example using compact tree for better memory efficiency:
+
+```rust
+use merkle_sum_sparse_merkle_tree::{CompactMSSMT, MemoryDb, Leaf};
+use sha2::Sha256;
+
+// Create a new compact tree
+let db = Box::new(MemoryDb::<32, Sha256>::new());
+let mut tree = CompactMSSMT::<32, Sha256, ()>::new(db);
+
+// Insert leaves
+let leaf = Leaf::new(vec![1, 2, 3], 100);
+tree.insert(&[1; 32], leaf.clone()).unwrap();
+
+// Get and verify compressed proofs
+let proof = tree.merkle_proof(&[1; 32]).unwrap();
+let compressed = proof.compress();
+let decompressed = compressed.decompress().unwrap();
 ```
 
 ## Development
@@ -71,5 +95,11 @@ cargo test
 
 ```bash
 cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+```
+
+### Benchmarking
+
+```bash
+cargo bench
 ```
 
