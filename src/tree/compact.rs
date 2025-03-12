@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 
 use crate::{
     node::{Branch, CompactLeaf, Hasher, Leaf, Node},
-    Db, EmptyLeaf, TreeError,
+    Db, EmptyLeaf, Proof, TreeError,
 };
 
 use super::regular::bit_index;
@@ -88,8 +88,6 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
         for i in 0..Self::max_levels() {
             // Get the children of the current node
             let (left, right) = self.db.get_children(i, current.hash())?;
-            println!("left: {}", left);
-            println!("right: {}", right);
             // Order the children based on the path
             let (mut next, mut sibling) = Self::step_order(i, path, left, right);
             match next {
@@ -184,8 +182,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
 
         // Now we create two compacted leaves and insert them as children of
         // a newly created branch
-        let node1 = CompactLeaf::new(i + 1, key1, leaf1.clone());
-        let node2 = CompactLeaf::new(i + 1, key2, leaf2.clone());
+        let node1 = CompactLeaf::new(i + 1, key1, leaf1.clone(), self.db.empty_tree());
+        let node2 = CompactLeaf::new(i + 1, key2, leaf2.clone(), self.db.empty_tree());
         // Insert the leaves into the database. This is not strictly necessary but it's useful
         // If we want to avoid inserting the same leaf twice.
         self.db.insert_leaf(leaf1)?;
@@ -244,7 +242,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                     // This is an empty subtree, so we can just walk up
                     // from the leaf to recreate the node key for this
                     // subtree then replace it with a compacted leaf.
-                    let new_leaf = CompactLeaf::new(next_height, *key, leaf.clone());
+                    let new_leaf =
+                        CompactLeaf::new(next_height, *key, leaf.clone(), self.db.empty_tree());
                     self.db.insert_leaf(leaf)?;
                     self.db.insert_compact_leaf(new_leaf.clone())?;
                     Node::Compact(new_leaf)
@@ -271,7 +270,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                     {
                         self.db.empty_tree()[next_height].clone()
                     } else {
-                        let new_leaf = CompactLeaf::new(next_height, *key, leaf.clone());
+                        let new_leaf =
+                            CompactLeaf::new(next_height, *key, leaf.clone(), self.db.empty_tree());
                         self.db.insert_leaf(leaf)?;
                         self.db.insert_compact_leaf(new_leaf.clone())?;
                         Node::Compact(new_leaf)
@@ -292,7 +292,8 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
                     // This is an empty subtree, so we can just walk up
                     // from the leaf to recreate the node key for this
                     // subtree then replace it with a compacted leaf.
-                    let new_leaf = CompactLeaf::new(next_height, *key, leaf.clone());
+                    let new_leaf =
+                        CompactLeaf::new(next_height, *key, leaf.clone(), self.db.empty_tree());
                     self.db.insert_leaf(leaf)?;
                     self.db.insert_compact_leaf(new_leaf.clone())?;
                     Node::Compact(new_leaf)
@@ -335,7 +336,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
     /// Returns an error if inserting the leaf would cause the tree's sum to overflow
     pub fn insert(
         &mut self,
-        key: [u8; HASH_SIZE],
+        key: &[u8; HASH_SIZE],
         leaf: Leaf<HASH_SIZE, H>,
     ) -> Result<(), TreeError<DbError>> {
         // Get the root node
@@ -356,13 +357,13 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
             return Err(TreeError::SumOverflow);
         }
 
-        let new_root = self.insert_leaf(&key, 0, &root.hash(), leaf)?;
+        let new_root = self.insert_leaf(key, 0, &root.hash(), leaf)?;
         self.db.update_root(new_root)
     }
 
-    pub fn delete(&mut self, key: [u8; HASH_SIZE]) -> Result<(), TreeError<DbError>> {
+    pub fn delete(&mut self, key: &[u8; HASH_SIZE]) -> Result<(), TreeError<DbError>> {
         let root = self.root()?;
-        let new_root = self.insert_leaf(&key, 0, &root.hash(), Leaf::Empty(EmptyLeaf::new()))?;
+        let new_root = self.insert_leaf(key, 0, &root.hash(), Leaf::Empty(EmptyLeaf::new()))?;
         self.db.update_root(new_root)?;
         Ok(())
     }
@@ -395,23 +396,23 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError>
     /// Returns the merkle proof for the given key
     pub fn merkle_proof(
         &self,
-        key: [u8; HASH_SIZE],
-    ) -> Result<Vec<Node<HASH_SIZE, H>>, TreeError<DbError>> {
+        key: &[u8; HASH_SIZE],
+    ) -> Result<Proof<HASH_SIZE, H>, TreeError<DbError>> {
         let mut proof = Vec::with_capacity(Self::max_levels());
         // Walk down the tree and collect the siblings
-        self.walk_down(&key, |_, _next, sibling, _| {
+        self.walk_down(key, |_, _next, sibling, _| {
             proof.push(sibling.clone());
         })?;
         // Reverse the proof to get the correct order
         proof.reverse();
-        Ok(proof)
+        Ok(Proof::new(proof))
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::CompactMSSMT;
-    use crate::{tree::verify_merkle_proof, EmptyLeaf, EmptyTree, Leaf, MemoryDb, TreeError};
+    use crate::{EmptyLeaf, EmptyTree, Leaf, MemoryDb, TreeError};
     use hex_literal::hex;
     use sha2::Sha256;
 
@@ -432,13 +433,13 @@ mod test {
         let leaf = Leaf::new(vec![1; 32], u64::MAX);
         compact_mssmt
             .insert(
-                hex!("0000000000000000000000000000000000000000000000000000000000000000"),
+                &hex!("0000000000000000000000000000000000000000000000000000000000000000"),
                 leaf.clone(),
             )
             .unwrap();
         assert_eq!(
             compact_mssmt.insert(
-                hex!("0000000000000000000000000000000000000000000000000000000000000001"),
+                &hex!("0000000000000000000000000000000000000000000000000000000000000001"),
                 leaf
             ),
             Err(TreeError::SumOverflow)
@@ -451,26 +452,24 @@ mod test {
         let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
-        mssmt.insert([0; 32], leaf.clone()).unwrap();
-        mssmt.insert([1; 32], leaf.clone()).unwrap();
-        let proof = mssmt.merkle_proof([0; 32]).unwrap();
+        mssmt.insert(&[0; 32], leaf.clone()).unwrap();
+        mssmt.insert(&[1; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof(&[0; 32]).unwrap();
         let root = mssmt.root().unwrap();
-        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap();
+        proof
+            .verify_merkle_proof::<()>(&[0; 32], leaf, root.hash())
+            .unwrap();
     }
 
     #[test]
     fn test_mssmt_merkle_proof() {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
         let mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
-        let proof = mssmt.merkle_proof([0; 32]).unwrap();
+        let proof = mssmt.merkle_proof(&[0; 32]).unwrap();
         let root = mssmt.root().unwrap();
-        verify_merkle_proof::<32, Sha256, ()>(
-            [0; 32],
-            Leaf::Empty(EmptyLeaf::new()),
-            proof,
-            root.hash(),
-        )
-        .unwrap();
+        proof
+            .verify_merkle_proof::<()>(&[0; 32], Leaf::Empty(EmptyLeaf::new()), root.hash())
+            .unwrap();
     }
 
     #[test]
@@ -479,12 +478,12 @@ mod test {
         let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         let leaf1 = Leaf::new([1; 32].to_vec(), 1);
         let leaf2 = Leaf::new([1; 32].to_vec(), 2);
-        mssmt.insert([0; 32], leaf1.clone()).unwrap();
+        mssmt.insert(&[0; 32], leaf1.clone()).unwrap();
         assert_eq!(
             mssmt.root().unwrap().hash(),
             hex!("f903c629136122deddecf7b795c6ea1bf43437ae8b418ca2e2836cb112a07af1")
         );
-        mssmt.insert([0; 32], leaf2.clone()).unwrap();
+        mssmt.insert(&[0; 32], leaf2.clone()).unwrap();
         assert_eq!(
             mssmt.root().unwrap().hash(),
             hex!("66926d4d708f0f5fd296240a823862fa4c7dd1342af9d920daa2592c27b9941f")
@@ -497,11 +496,13 @@ mod test {
         let mut mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
-        mssmt.insert([0; 32], leaf.clone()).unwrap();
-        let proof = mssmt.merkle_proof([1; 32]).unwrap();
+        mssmt.insert(&[0; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof(&[1; 32]).unwrap();
         let root = mssmt.root().unwrap();
         assert_eq!(
-            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap_err(),
+            proof
+                .verify_merkle_proof::<()>(&[1; 32], leaf, root.hash())
+                .unwrap_err(),
             TreeError::InvalidMerkleProof
         );
     }
@@ -510,11 +511,11 @@ mod test {
     fn test_compact_tree_overflow() {
         let db = MemoryDb::<32, Sha256>::default();
         let mut tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(db));
-        tree.insert([0; 32], Leaf::new([1; 32].to_vec(), u64::MAX))
+        tree.insert(&[0; 32], Leaf::new([1; 32].to_vec(), u64::MAX))
             .unwrap();
         let leaf = Leaf::new([1; 32].to_vec(), 1);
         assert_eq!(
-            tree.insert([1; 32], leaf).unwrap_err(),
+            tree.insert(&[1; 32], leaf).unwrap_err(),
             TreeError::SumOverflow
         );
     }
@@ -524,21 +525,21 @@ mod test {
         let db = Box::new(MemoryDb::<32, Sha256>::new());
         let mut compact_mssmt = CompactMSSMT::<32, Sha256, ()>::new(db);
         compact_mssmt
-            .insert([0; 32], Leaf::new([1; 32].to_vec(), 1))
+            .insert(&[0; 32], Leaf::new([1; 32].to_vec(), 1))
             .unwrap();
         compact_mssmt
-            .insert([1; 32], Leaf::new([1; 32].to_vec(), 1))
+            .insert(&[1; 32], Leaf::new([1; 32].to_vec(), 1))
             .unwrap();
         assert_eq!(
             compact_mssmt.root().unwrap().hash(),
             hex!("ee0f6265131d693b8017d30ffbecaa68dff2f37f5de0fba81176ac3dd3f6df00")
         );
-        compact_mssmt.delete([1; 32]).unwrap();
+        compact_mssmt.delete(&[1; 32]).unwrap();
         assert_eq!(
             compact_mssmt.root().unwrap().hash(),
             hex!("f903c629136122deddecf7b795c6ea1bf43437ae8b418ca2e2836cb112a07af1")
         );
-        compact_mssmt.delete([0; 32]).unwrap();
+        compact_mssmt.delete(&[0; 32]).unwrap();
         assert_eq!(
             compact_mssmt.root().unwrap().hash(),
             EmptyTree::<32, Sha256>::empty_tree()[0].hash()

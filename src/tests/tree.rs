@@ -59,8 +59,8 @@ fn test_leaves_insertion() {
     let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
     let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
 
-    tree.insert([1; 32], leaf1.clone()).unwrap();
-    compact_tree.insert([1; 32], leaf1.clone()).unwrap();
+    tree.insert(&[1; 32], leaf1.clone()).unwrap();
+    compact_tree.insert(&[1; 32], leaf1.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
         hex!("b46e250d98aa9917abdd1012f72c03ab9a59f6de5253d963a99b7d69c2eca3da")
@@ -70,8 +70,8 @@ fn test_leaves_insertion() {
         hex!("b46e250d98aa9917abdd1012f72c03ab9a59f6de5253d963a99b7d69c2eca3da")
     );
 
-    tree.insert([2; 32], leaf2.clone()).unwrap();
-    compact_tree.insert([2; 32], leaf2.clone()).unwrap();
+    tree.insert(&[2; 32], leaf2.clone()).unwrap();
+    compact_tree.insert(&[2; 32], leaf2.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
         hex!("dc5ab9a0f0b56e215b550b2946cdc72aae2b013aa4790ee4d809a9b43cf2d9aa")
@@ -81,8 +81,8 @@ fn test_leaves_insertion() {
         hex!("dc5ab9a0f0b56e215b550b2946cdc72aae2b013aa4790ee4d809a9b43cf2d9aa")
     );
 
-    tree.insert([3; 32], leaf3.clone()).unwrap();
-    compact_tree.insert([3; 32], leaf3.clone()).unwrap();
+    tree.insert(&[3; 32], leaf3.clone()).unwrap();
+    compact_tree.insert(&[3; 32], leaf3.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
         hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
@@ -91,8 +91,8 @@ fn test_leaves_insertion() {
         compact_tree.root().unwrap().hash(),
         hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
     );
-    tree.insert(key4, leaf4.clone()).unwrap();
-    compact_tree.insert(key4, leaf4.clone()).unwrap();
+    tree.insert(&key4, leaf4.clone()).unwrap();
+    compact_tree.insert(&key4, leaf4.clone()).unwrap();
 
     assert_eq!(
         tree.root().unwrap().hash(),
@@ -108,12 +108,12 @@ fn test_history_independant() {
 
     let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
     let mut compact_tree = CompactMSSMT::<32, Sha256, ()>::new(Box::new(MemoryDb::default()));
-    tree.insert([1; 32], leaf1.clone()).unwrap();
-    tree.insert([3; 32], leaf3.clone()).unwrap();
-    tree.insert([2; 32], leaf2.clone()).unwrap();
-    compact_tree.insert([3; 32], leaf3.clone()).unwrap();
-    compact_tree.insert([2; 32], leaf2.clone()).unwrap();
-    compact_tree.insert([1; 32], leaf1.clone()).unwrap();
+    tree.insert(&[1; 32], leaf1.clone()).unwrap();
+    tree.insert(&[3; 32], leaf3.clone()).unwrap();
+    tree.insert(&[2; 32], leaf2.clone()).unwrap();
+    compact_tree.insert(&[3; 32], leaf3.clone()).unwrap();
+    compact_tree.insert(&[2; 32], leaf2.clone()).unwrap();
+    compact_tree.insert(&[1; 32], leaf1.clone()).unwrap();
     assert_eq!(
         tree.root().unwrap().hash(),
         hex!("37cb0517efdaaeb2c2c32fac206d8f14070864a1fd69d5368127dba161569ca2")
@@ -153,7 +153,7 @@ fn test_insertion() {
             }
         }
     }
-    let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
+
     let l1 = Leaf::new([1; 32].to_vec(), 1);
     let l2 = Leaf::new([2; 32].to_vec(), 2);
     let l3 = Leaf::<32, Sha256>::new([3; 32].to_vec(), 3);
@@ -167,10 +167,12 @@ fn test_insertion() {
     let k3 = [3_u8; 32];
     let k4 = [4_u8; 32];
 
-    let cl1 = CompactLeaf::new(100, k1, l1.clone());
-    let cl2 = CompactLeaf::new(100, k2, l2.clone());
-    let cl3 = CompactLeaf::new(99, k3, l3.clone());
-    let cl4 = CompactLeaf::new(99, k4, l4.clone());
+    let empty_tree = EmptyTree::<32, Sha256>::empty_tree();
+
+    let cl1 = CompactLeaf::new(100, k1, l1.clone(), empty_tree.clone());
+    let cl2 = CompactLeaf::new(100, k2, l2.clone(), empty_tree.clone());
+    let cl3 = CompactLeaf::new(99, k3, l3.clone(), empty_tree.clone());
+    let cl4 = CompactLeaf::new(99, k4, l4.clone(), empty_tree.clone());
     let branch_cl1_cl2 = Branch::new(Node::Compact(cl1.clone()), Node::Compact(cl2.clone()));
     let branch_cl1_cl2_cl3 = Branch::new(
         Node::Branch(branch_cl1_cl2.clone()),

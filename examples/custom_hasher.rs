@@ -29,7 +29,7 @@ fn main() {
 
     // Insert a leaf
     let prefixed_leaf = Leaf::new(vec![1, 2, 3], 100);
-    tree.insert([1; 32], prefixed_leaf.clone()).unwrap();
+    tree.insert(&[1; 32], prefixed_leaf.clone()).unwrap();
 
     // Get the root hash
     let root = tree.root().unwrap();
@@ -39,7 +39,7 @@ fn main() {
     let standard_db = Box::new(MemoryDb::<32, Sha256>::new());
     let mut standard_tree = MSSMT::<32, Sha256, ()>::new(standard_db);
     let standard_leaf = Leaf::new(vec![1, 2, 3], 100);
-    standard_tree.insert([1; 32], standard_leaf).unwrap();
+    standard_tree.insert(&[1; 32], standard_leaf).unwrap();
     let standard_root = standard_tree.root().unwrap();
     println!(
         "Root hash with standard SHA256: {}",

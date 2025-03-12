@@ -29,7 +29,7 @@ fn bench_insertion(c: &mut Criterion) {
             for _ in 0..100 {
                 let key = generate_random_key();
                 let leaf = generate_random_leaf();
-                tree.insert(key, leaf).unwrap();
+                tree.insert(&key, leaf).unwrap();
             }
         })
     });
@@ -42,7 +42,7 @@ fn bench_insertion(c: &mut Criterion) {
             for _ in 0..100 {
                 let key = generate_random_key();
                 let leaf = generate_random_leaf();
-                tree.insert(key, leaf).unwrap();
+                tree.insert(&key, leaf).unwrap();
             }
         })
     });

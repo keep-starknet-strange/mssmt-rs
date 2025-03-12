@@ -5,7 +5,7 @@ use std::{marker::PhantomData, sync::Arc};
 use crate::{
     db::Db,
     node::{Branch, Hasher, Leaf, Node},
-    EmptyLeaf, TreeError,
+    EmptyLeaf, Proof, TreeError,
 };
 
 use super::walk_up;
@@ -40,7 +40,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
     }
 
     /// Max height of the tree
-    pub const fn max_height() -> usize {
+    pub const fn max_levels() -> usize {
         HASH_SIZE * 8
     }
 
@@ -61,13 +61,13 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
     /// * `for_each` - Closure that is executed at each step of the traversal of the tree.
     pub fn walk_down(
         &self,
-        key: [u8; HASH_SIZE],
+        key: &[u8; HASH_SIZE],
         mut for_each: impl FnMut(usize, &Node<HASH_SIZE, H>, Node<HASH_SIZE, H>, Node<HASH_SIZE, H>),
     ) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
         let mut current = Node::Branch(self.root()?);
-        for i in 0..Self::max_height() {
+        for i in 0..Self::max_levels() {
             let (left, right) = self.db.get_children(i, current.hash())?;
-            let (next, sibling) = if bit_index(i, &key) == 0 {
+            let (next, sibling) = if bit_index(i, key) == 0 {
                 (left, right)
             } else {
                 (right, left)
@@ -84,14 +84,14 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
     /// Insert a leaf in the tree.
     pub fn insert(
         &mut self,
-        key: [u8; HASH_SIZE],
+        key: &[u8; HASH_SIZE],
         leaf: Leaf<HASH_SIZE, H>,
     ) -> Result<(), TreeError<DbError>> {
         if leaf.sum().checked_add(self.root()?.sum()).is_none() {
             return Err(TreeError::SumOverflow);
         }
-        let mut prev_parents = Vec::with_capacity(Self::max_height());
-        let mut siblings = Vec::with_capacity(Self::max_height());
+        let mut prev_parents = Vec::with_capacity(Self::max_levels());
+        let mut siblings = Vec::with_capacity(Self::max_levels());
 
         self.walk_down(key, |_, _next, sibling, parent| {
             prev_parents.push(parent.hash());
@@ -105,9 +105,9 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
         let root = walk_up(
             key,
             leaf.clone(),
-            siblings,
+            &siblings,
             |height, _current, _sibling, parent| {
-                let prev_parent = prev_parents[Self::max_height() - height - 1];
+                let prev_parent = prev_parents[Self::max_levels() - height - 1];
                 if prev_parent != self.db.empty_tree()[height].hash() {
                     branches_delete.push(prev_parent);
                 }
@@ -132,20 +132,20 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
 
     pub fn merkle_proof(
         &self,
-        key: [u8; HASH_SIZE],
-    ) -> Result<Vec<Node<HASH_SIZE, H>>, TreeError<DbError>> {
-        let mut proof = Vec::with_capacity(Self::max_height());
+        key: &[u8; HASH_SIZE],
+    ) -> Result<Proof<HASH_SIZE, H>, TreeError<DbError>> {
+        let mut proof = Vec::with_capacity(Self::max_levels());
         self.walk_down(key, |_, _next, sibling, _| {
             proof.push(sibling);
         })?;
         proof.reverse();
-        Ok(proof)
+        Ok(Proof::new(proof))
     }
 
-    pub fn delete(&mut self, key: [u8; HASH_SIZE]) -> Result<(), TreeError<DbError>> {
+    pub fn delete(&mut self, key: &[u8; HASH_SIZE]) -> Result<(), TreeError<DbError>> {
         self.insert(key, Leaf::Empty(EmptyLeaf::new()))
     }
-    pub fn get(&self, key: [u8; HASH_SIZE]) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
+    pub fn get(&self, key: &[u8; HASH_SIZE]) -> Result<Leaf<HASH_SIZE, H>, TreeError<DbError>> {
         self.walk_down(key, |_, _, _, _| {})
     }
 }
@@ -153,7 +153,7 @@ impl<const HASH_SIZE: usize, H: Hasher<HASH_SIZE> + Clone, DbError> MSSMT<HASH_S
 #[cfg(test)]
 mod test {
     use super::MSSMT;
-    use crate::{tree::verify_merkle_proof, EmptyTree, Leaf, MemoryDb, TreeError};
+    use crate::{EmptyTree, Leaf, MemoryDb, TreeError};
     use sha2::Sha256;
 
     #[test]
@@ -172,10 +172,12 @@ mod test {
         let mut mssmt = MSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
-        mssmt.insert([0; 32], leaf.clone()).unwrap();
-        let proof = mssmt.merkle_proof([0; 32]).unwrap();
+        mssmt.insert(&[0; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof(&[0; 32]).unwrap();
         let root = mssmt.root().unwrap();
-        verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap();
+        proof
+            .verify_merkle_proof::<()>(&[0; 32], leaf, root.hash())
+            .unwrap();
     }
 
     #[test]
@@ -184,11 +186,13 @@ mod test {
         let mut mssmt = MSSMT::<32, Sha256, ()>::new(db);
         let value = vec![0; 32];
         let leaf = Leaf::new(value, 1);
-        mssmt.insert([0; 32], leaf.clone()).unwrap();
-        let proof = mssmt.merkle_proof([1; 32]).unwrap();
+        mssmt.insert(&[0; 32], leaf.clone()).unwrap();
+        let proof = mssmt.merkle_proof(&[1; 32]).unwrap();
         let root = mssmt.root().unwrap();
         assert_eq!(
-            verify_merkle_proof::<32, Sha256, ()>([0; 32], leaf, proof, root.hash()).unwrap_err(),
+            proof
+                .verify_merkle_proof::<()>(&[0; 32], leaf, root.hash())
+                .unwrap_err(),
             TreeError::InvalidMerkleProof
         );
     }
@@ -197,9 +201,9 @@ mod test {
     fn test_tree_leaf_deletion() {
         let db = MemoryDb::<32, Sha256>::default();
         let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(db));
-        tree.insert([0; 32], Leaf::new([1; 32].to_vec(), 1))
+        tree.insert(&[0; 32], Leaf::new([1; 32].to_vec(), 1))
             .unwrap();
-        tree.delete([0; 32]).unwrap();
+        tree.delete(&[0; 32]).unwrap();
         assert_eq!(
             tree.root().unwrap().hash(),
             EmptyTree::<32, Sha256>::empty_tree()[0].hash()
@@ -211,8 +215,8 @@ mod test {
         let db = MemoryDb::<32, Sha256>::default();
         let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(db));
         let leaf = Leaf::new([1; 32].to_vec(), 1);
-        tree.insert([0; 32], leaf.clone()).unwrap();
-        let got_leaf = tree.get([0; 32]).unwrap();
+        tree.insert(&[0; 32], leaf.clone()).unwrap();
+        let got_leaf = tree.get(&[0; 32]).unwrap();
         assert_eq!(got_leaf.hash(), leaf.hash());
     }
 
@@ -220,11 +224,11 @@ mod test {
     fn test_tree_overflow() {
         let db = MemoryDb::<32, Sha256>::default();
         let mut tree = MSSMT::<32, Sha256, ()>::new(Box::new(db));
-        tree.insert([0; 32], Leaf::new([1; 32].to_vec(), u64::MAX))
+        tree.insert(&[0; 32], Leaf::new([1; 32].to_vec(), u64::MAX))
             .unwrap();
         let leaf = Leaf::new([1; 32].to_vec(), 1);
         assert_eq!(
-            tree.insert([1; 32], leaf).unwrap_err(),
+            tree.insert(&[1; 32], leaf).unwrap_err(),
             TreeError::SumOverflow
         );
     }
