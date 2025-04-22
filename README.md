@@ -34,7 +34,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-mssmt = "0.6.0"
+mssmt = "0.0.7"
 ```
 
 Basic example using regular tree:
