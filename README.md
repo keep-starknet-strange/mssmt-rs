@@ -34,13 +34,13 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merkle-sum-sparse-merkle-tree = "0.6.0"
+mssmt = "0.6.0"
 ```
 
 Basic example using regular tree:
 
 ```rust
-use merkle_sum_sparse_merkle_tree::{MSSMT, MemoryDb, Leaf};
+use mssmt::{MSSMT, MemoryDb, Leaf};
 use sha2::Sha256;
 
 // Create a new tree with 32-byte hashes using SHA256
@@ -60,7 +60,7 @@ proof.verify_merkle_proof(&[1; 32], leaf, root.hash()).unwrap();
 Example using compact tree for better memory efficiency:
 
 ```rust
-use merkle_sum_sparse_merkle_tree::{CompactMSSMT, MemoryDb, Leaf};
+use mssmt::{CompactMSSMT, MemoryDb, Leaf};
 use sha2::Sha256;
 
 // Create a new compact tree
